@@ -1,0 +1,325 @@
+{
+  "model": "route sea-state forecaster (climatological, position + calendar time)",
+  "not_a_tft_because": "no recent observed history is available to the planner at inference time; see services/route/train.py module docstring and docs/DEVIATIONS.md",
+  "features": [
+    "lat",
+    "lon",
+    "hour_sin",
+    "hour_cos",
+    "doy_sin",
+    "doy_cos"
+  ],
+  "targets": [
+    "wind_speed_kn",
+    "wind_dir_sin",
+    "wind_dir_cos",
+    "wave_height_m",
+    "wave_dir_sin",
+    "wave_dir_cos",
+    "current_speed_kn",
+    "current_dir_sin",
+    "current_dir_cos"
+  ],
+  "method_per_target": {
+    "wind_speed_kn": "bucket_lookup",
+    "wind_dir_sin": "xgboost",
+    "wind_dir_cos": "xgboost",
+    "wave_height_m": "bucket_lookup",
+    "wave_dir_sin": "xgboost",
+    "wave_dir_cos": "xgboost",
+    "current_speed_kn": "bucket_lookup",
+    "current_dir_sin": "bucket_lookup",
+    "current_dir_cos": "bucket_lookup"
+  },
+  "training_data": {
+    "source": [
+      "Open-Meteo Historical Weather API (ERA5 reanalysis), CC BY 4.0",
+      "Open-Meteo Marine Weather API (wave + ocean current models), CC BY 4.0"
+    ],
+    "grid_points": [
+      {
+        "lat": 10.58,
+        "lon": 122.46
+      },
+      {
+        "lat": 10.58,
+        "lon": 122.59
+      },
+      {
+        "lat": 10.58,
+        "lon": 122.72
+      },
+      {
+        "lat": 10.68,
+        "lon": 122.46
+      },
+      {
+        "lat": 10.68,
+        "lon": 122.59
+      },
+      {
+        "lat": 10.68,
+        "lon": 122.72
+      },
+      {
+        "lat": 10.78,
+        "lon": 122.46
+      },
+      {
+        "lat": 10.78,
+        "lon": 122.59
+      },
+      {
+        "lat": 10.78,
+        "lon": 122.72
+      }
+    ],
+    "date_range": [
+      "2024-01-29",
+      "2026-07-29"
+    ],
+    "rows_used": 196272,
+    "rows_dropped": 936
+  },
+  "validation": {
+    "split": "time-based, single global date cutoff, used only for method selection -- the shipped artifact is refit on the full pull",
+    "rationale": "hourly readings are strongly autocorrelated; a row-wise split would leak near-future conditions into training",
+    "test_fraction": 0.2,
+    "train_rows": 157014,
+    "test_rows": 39258,
+    "test_date_range": [
+      "2026-01-29 06:00:00+00:00",
+      "2026-07-29 23:00:00+00:00"
+    ],
+    "scores": {
+      "wind_speed_kn": {
+        "climatological-mean": {
+          "name": "climatological-mean",
+          "target": "wind_speed_kn",
+          "mae": 3.2304201126098633,
+          "r2": -0.005477786064147949
+        },
+        "bucket-lookup": {
+          "name": "bucket-lookup",
+          "target": "wind_speed_kn",
+          "mae": 2.421087125499558,
+          "r2": 0.3983379968473547
+        },
+        "xgboost": {
+          "name": "xgboost",
+          "target": "wind_speed_kn",
+          "mae": 2.5686306953430176,
+          "r2": 0.3124593496322632
+        }
+      },
+      "wind_dir_sin": {
+        "climatological-mean": {
+          "name": "climatological-mean",
+          "target": "wind_dir_sin",
+          "mae": 0.5145652890205383,
+          "r2": -0.006911516189575195
+        },
+        "bucket-lookup": {
+          "name": "bucket-lookup",
+          "target": "wind_dir_sin",
+          "mae": 0.2970148732574247,
+          "r2": 0.4631506880603229
+        },
+        "xgboost": {
+          "name": "xgboost",
+          "target": "wind_dir_sin",
+          "mae": 0.2854854464530945,
+          "r2": 0.516311526298523
+        }
+      },
+      "wind_dir_cos": {
+        "climatological-mean": {
+          "name": "climatological-mean",
+          "target": "wind_dir_cos",
+          "mae": 0.6513271331787109,
+          "r2": -0.009962797164916992
+        },
+        "bucket-lookup": {
+          "name": "bucket-lookup",
+          "target": "wind_dir_cos",
+          "mae": 0.3262245282227487,
+          "r2": 0.5105103666147897
+        },
+        "xgboost": {
+          "name": "xgboost",
+          "target": "wind_dir_cos",
+          "mae": 0.2993292808532715,
+          "r2": 0.5757770538330078
+        }
+      },
+      "wave_height_m": {
+        "climatological-mean": {
+          "name": "climatological-mean",
+          "target": "wave_height_m",
+          "mae": 0.17008967697620392,
+          "r2": -0.03929901123046875
+        },
+        "bucket-lookup": {
+          "name": "bucket-lookup",
+          "target": "wave_height_m",
+          "mae": 0.14543876669198652,
+          "r2": 0.1593782946583756
+        },
+        "xgboost": {
+          "name": "xgboost",
+          "target": "wave_height_m",
+          "mae": 0.15931421518325806,
+          "r2": -0.15277624130249023
+        }
+      },
+      "wave_dir_sin": {
+        "climatological-mean": {
+          "name": "climatological-mean",
+          "target": "wave_dir_sin",
+          "mae": 0.6030124425888062,
+          "r2": -0.02567160129547119
+        },
+        "bucket-lookup": {
+          "name": "bucket-lookup",
+          "target": "wave_dir_sin",
+          "mae": 0.2147859040879779,
+          "r2": 0.6835369322157729
+        },
+        "xgboost": {
+          "name": "xgboost",
+          "target": "wave_dir_sin",
+          "mae": 0.20863351225852966,
+          "r2": 0.702926516532898
+        }
+      },
+      "wave_dir_cos": {
+        "climatological-mean": {
+          "name": "climatological-mean",
+          "target": "wave_dir_cos",
+          "mae": 0.7526006698608398,
+          "r2": -0.0152510404586792
+        },
+        "bucket-lookup": {
+          "name": "bucket-lookup",
+          "target": "wave_dir_cos",
+          "mae": 0.25833137723122557,
+          "r2": 0.6867259402270441
+        },
+        "xgboost": {
+          "name": "xgboost",
+          "target": "wave_dir_cos",
+          "mae": 0.24856428802013397,
+          "r2": 0.7074590921401978
+        }
+      },
+      "current_speed_kn": {
+        "climatological-mean": {
+          "name": "climatological-mean",
+          "target": "current_speed_kn",
+          "mae": 0.2195747047662735,
+          "r2": -0.00013935565948486328
+        },
+        "bucket-lookup": {
+          "name": "bucket-lookup",
+          "target": "current_speed_kn",
+          "mae": 0.17306756751434854,
+          "r2": 0.32367454651140337
+        },
+        "xgboost": {
+          "name": "xgboost",
+          "target": "current_speed_kn",
+          "mae": 0.18482127785682678,
+          "r2": 0.23289304971694946
+        }
+      },
+      "current_dir_sin": {
+        "climatological-mean": {
+          "name": "climatological-mean",
+          "target": "current_dir_sin",
+          "mae": 0.7030640840530396,
+          "r2": -0.0005278587341308594
+        },
+        "bucket-lookup": {
+          "name": "bucket-lookup",
+          "target": "current_dir_sin",
+          "mae": 0.5580607583508489,
+          "r2": 0.2373897031088682
+        },
+        "xgboost": {
+          "name": "xgboost",
+          "target": "current_dir_sin",
+          "mae": 0.580038845539093,
+          "r2": 0.22135323286056519
+        }
+      },
+      "current_dir_cos": {
+        "climatological-mean": {
+          "name": "climatological-mean",
+          "target": "current_dir_cos",
+          "mae": 0.5326476693153381,
+          "r2": -0.005872607231140137
+        },
+        "bucket-lookup": {
+          "name": "bucket-lookup",
+          "target": "current_dir_cos",
+          "mae": 0.4282690769513149,
+          "r2": 0.2665863157305983
+        },
+        "xgboost": {
+          "name": "xgboost",
+          "target": "current_dir_cos",
+          "mae": 0.44613149762153625,
+          "r2": 0.24383926391601562
+        }
+      }
+    },
+    "angular_mae_deg": {
+      "wind": 27.3357352127152,
+      "wave": 21.08252457197633,
+      "current": 55.00720333227228
+    }
+  },
+  "known_limits": [
+    "Predicts the climatological expectation for a position and absolute time, not a live nowcast -- there is no recent-observation input at serving time. See the 'not_a_tft_because' field above.",
+    "Five of nine targets (wind_speed_kn, wave_height_m, current_speed_kn, current_dir_sin, current_dir_cos) ship as the bucket-lookup table, not XGBoost -- it won on held-out data and the loss was kept rather than tuned away. See method_per_target.",
+    "Trained on model/reanalysis output (ERA5, WAM, NOAA/Copernicus current fields), not buoy measurement; the Iloilo Strait is narrow and partly land-sheltered, which coarse ocean models under-resolve.",
+    "Nine fixed grid points spanning the operating box; interpolates in between via the tree ensemble (XGBoost targets) or nearest exact key (lookup targets) rather than a physical spatial model.",
+    "Held-out validation period is 2026-01-29 to 2026-07-29, under three years of total history -- long enough to see one monsoon transition, not enough to certify a full multi-year climatology."
+  ],
+  "xgb_params": {
+    "n_estimators": 200,
+    "max_depth": 4,
+    "learning_rate": 0.05,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "reg_lambda": 1.0,
+    "min_child_weight": 30,
+    "random_state": 20260804,
+    "n_jobs": 4
+  },
+  "fit_seconds": 14.84,
+  "random_seed": 20260804,
+  "serving": {
+    "xgboost_targets": {
+      "format": "onnx",
+      "artifact_dir": "models\\route_forecast",
+      "runtime": "onnxruntime",
+      "parity_max_abs_diff": {
+        "wind_dir_sin": 5.960464477539062e-07,
+        "wind_dir_cos": 4.76837158203125e-07,
+        "wave_dir_sin": 2.384185791015625e-07,
+        "wave_dir_cos": 7.152557373046875e-07
+      }
+    },
+    "bucket_lookup_targets": {
+      "format": "json",
+      "artifact": "models\\route_forecast\\bucket_lookup.json",
+      "keys": [
+        "lat",
+        "lon",
+        "hour_bucket",
+        "month"
+      ]
+    }
+  }
+}

@@ -102,6 +102,60 @@ REGISTRY: dict[str, Dataset] = {
             "possible at all; it is explicitly not a source of RUL predictions here.",
         ],
     ),
+    "open-meteo-weather-archive": Dataset(
+        key="open-meteo-weather-archive",
+        name="Open-Meteo Historical Weather API (ERA5/ERA5-Land reanalysis)",
+        url="https://archive-api.open-meteo.com/v1/archive",
+        licence="CC BY 4.0 (Open-Meteo), underlying Copernicus ERA5 reanalysis",
+        citation=(
+            "Open-Meteo.com Historical Weather API, https://open-meteo.com. Weather data "
+            "by Copernicus Climate Change Service, ECMWF."
+        ),
+        purpose=(
+            "Hourly 10 m wind speed and direction, 2024-01-01 through the fetch date, at a "
+            "grid of points across the Iloilo Strait operating box. Trains the route "
+            "forecaster's wind targets."
+        ),
+        caveats=[
+            "Fetched by services/route/train.py's data pull "
+            "(python -m data.fetch_route_forecast), not data/download.py -- the endpoint "
+            "takes a (latitude, longitude, start_date, end_date) query per grid point rather "
+            "than a single static URL, which the generic single-file fetcher does not model. "
+            "Every request this dataset entry covers is templated from this one base URL.",
+            "ERA5 is a REANALYSIS, not an observation network -- it is a physics model's best "
+            "estimate of the historical atmospheric state, ~9-31 km resolution depending on "
+            "variable. It is the closest thing to ground truth publicly available for a "
+            "specific strait with no local weather station, and it is what the route "
+            "forecaster is honestly trained against.",
+        ],
+    ),
+    "open-meteo-marine-archive": Dataset(
+        key="open-meteo-marine-archive",
+        name="Open-Meteo Marine Weather API (wave and ocean-current models)",
+        url="https://marine-api.open-meteo.com/v1/marine",
+        licence="CC BY 4.0 (Open-Meteo), underlying ECMWF WAM / NOAA / Copernicus Marine",
+        citation=(
+            "Open-Meteo.com Marine Weather API, https://open-meteo.com. Wave and ocean "
+            "current data by ECMWF, NOAA NCEP, and Copernicus Marine Service."
+        ),
+        purpose=(
+            "Hourly wave height, wave direction, and ocean current velocity/direction over "
+            "the same grid and date range as open-meteo-weather-archive. Trains the route "
+            "forecaster's wave and current targets."
+        ),
+        caveats=[
+            "Same templated-fetch note as open-meteo-weather-archive: one base URL, many "
+            "(position, date-range) queries, run by data/fetch_route_forecast.py.",
+            "Blended model output (WAM wave model, NOAA/Copernicus current reanalysis), not "
+            "buoy measurement. The Iloilo Strait is narrow and partly land-sheltered, which "
+            "coarse ocean models under-resolve -- expect the current and wave figures to be "
+            "smoother than what a boat in the strait actually feels, same caveat a hand-tuned "
+            "analytic field would carry.",
+            "ocean_current_velocity/ocean_current_direction had ~0.5% missing hours in the "
+            "pulled window (120 of 22,560 for the sampled point); dropped at feature-build "
+            "time, not imputed.",
+        ],
+    ),
     # FEMTO / PRONOSTIA is named in the technical profile but is NOT used here.
     # Two reasons, recorded so the omission is a decision rather than an oversight:
     #
