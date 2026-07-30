@@ -13,9 +13,13 @@ bridge display does not. `SpeedRecommendation` is imported, never redefined.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
+from packages.contracts.route import RouteRecommendation
 from packages.contracts.speed import SpeedRecommendation
+from packages.contracts.telemetry import TelemetryFrame
 
 PASSENGER_MASS_KG = 70.0
 """Average mass added per passenger, including baggage.
@@ -97,6 +101,87 @@ class AdviseRequest(BaseModel):
         return self.passenger_count * PASSENGER_MASS_KG + self.cargo_kg
 
 
+class LatLonInput(BaseModel):
+    """A position an operator picks on a chart. Degrees, WGS84."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    name: str | None = None
+
+
+class RouteRequest(BaseModel):
+    """Two points and a schedule. The conditions are not sent: the route is
+    planned against the forecast field along the track, not a single sea state
+    the way `/advise` is -- that is the whole difference between the two products.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vessel: VesselInput = Field(default_factory=VesselInput)
+    origin: LatLonInput
+    destination: LatLonInput
+
+    depart_at: datetime | None = Field(
+        None, description="Departure time; the forecast is read forward from it. None means now."
+    )
+    minutes_available: float | None = Field(
+        None,
+        gt=0,
+        description="ETA budget for the whole voyage. None optimises fuel per mile, no schedule.",
+    )
+
+    passenger_count: int = Field(0, ge=0)
+    cargo_kg: float = Field(0.0, ge=0)
+    egt_excess_ratio: float | None = Field(
+        None,
+        gt=0,
+        description="Exhaust temperature over this vessel's healthy baseline. 1.0 is as-new.",
+    )
+
+    @property
+    def added_load_kg(self) -> float:
+        return self.passenger_count * PASSENGER_MASS_KG + self.cargo_kg
+
+
+class MaintenanceRequest(BaseModel):
+    """A window of recent telemetry to score for anomalies.
+
+    The frame is the system's atomic unit (`packages/contracts/telemetry.py`), so
+    the window is sent as frames rather than a bespoke reading shape -- the same
+    objects the ingest path and the bridge already handle. Only the
+    electro-mechanical channels are read; the rest may be absent.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vessel_id: str = "MV-DEMO-01"
+    frames: list[TelemetryFrame] = Field(
+        min_length=1, description="Recent frames, oldest first. A minute or two is plenty."
+    )
+    observed_hours: float | None = Field(
+        None,
+        ge=0,
+        description="This vessel's run-hours, which set cold-start confidence. "
+        "None uses the baseline's own history count.",
+    )
+
+
+class SafetyRequest(BaseModel):
+    """A single frame to check against the rule set.
+
+    One frame, not a window. A cutoff must fire on the reading in front of it;
+    see `services/safety/rules.py` for why averaging would be actively unsafe
+    here even though it is correct for the anomaly detector next door.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vessel_id: str | None = None
+    frame: TelemetryFrame
+
+
 class PowerOut(BaseModel):
     """Itemised shaft power. Shown so a recommendation can explain itself --
     "you are punching a 1.4 m head sea" rather than an unexplained number."""
@@ -158,4 +243,26 @@ class AdviseResponse(BaseModel):
     model_trained: bool = Field(
         description="False when no wear artifact is loaded; engine is then assumed healthy "
         "and confidence is reduced accordingly."
+    )
+
+
+class RouteResponse(BaseModel):
+    """The route recommendation plus the two facts the display needs to caveat it.
+
+    `RouteRecommendation` already carries the track, the burn, the honest baseline
+    delta and the constraint flags. What it cannot say about itself is whether the
+    engine could actually hold the schedule, or whether a trained wear model
+    informed the burn -- both live here so the bridge can show them without
+    re-deriving them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    recommendation: RouteRecommendation
+    schedule_feasible: bool = Field(
+        description="False when the engine cannot hold the required speed on some leg; "
+        "the route is still the cheapest lawful track, but arrival will be late."
+    )
+    model_trained: bool = Field(
+        description="False when no wear artifact is loaded; the fuel model then assumes a "
+        "healthy engine."
     )

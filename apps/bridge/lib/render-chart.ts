@@ -262,26 +262,102 @@ function drawPorts(ctx: CanvasRenderingContext2D, scene: ChartScene) {
   }
 }
 
+/**
+ * The vessel, drawn as what it actually is: a double-outrigger passenger banca.
+ *
+ * The previous marker was a plain arrowhead. That is the conventional chart
+ * symbol and there is nothing wrong with it, but this display is also the demo,
+ * and the boat that runs Iloilo-Jordan is a fiberglass banca with two katig
+ * booms and bamboo floats. Drawing it is what makes the screen recognisably
+ * about *this* crossing rather than a generic vessel on a generic strait.
+ *
+ * It stays a navigation symbol as well as a picture: the hull is drawn to a
+ * fixed screen size rather than to scale, because a 12 m boat on a 15 nm chart
+ * is a third of a pixel and a symbol you cannot see is not a symbol. The wake
+ * behind it is the only part that carries information -- it appears when the
+ * vessel is actually making way.
+ */
 function drawVessel(ctx: CanvasRenderingContext2D, scene: ChartScene) {
   const { position, headingRad } = scene.vessel;
+  // Follow view is already zoomed 2.2x by the camera; shrink the symbol there so
+  // it stays a boat on the water rather than growing into a boat on the screen.
+  const scale = scene.view === "follow" ? 0.62 : 1;
+
   ctx.save();
   ctx.translate(position.x, position.y);
   ctx.rotate(headingRad);
+  ctx.scale(scale, scale);
 
+  // Wake first, so the hull sits on top of it. Length follows the fact of moving
+  // rather than a speed we do not have here.
+  if (scene.running) {
+    const wake = ctx.createLinearGradient(-10, 0, -46, 0);
+    wake.addColorStop(0, "rgba(226, 244, 255, 0.42)");
+    wake.addColorStop(1, "rgba(226, 244, 255, 0)");
+    ctx.beginPath();
+    ctx.moveTo(-8, -3.5);
+    ctx.lineTo(-46, -11);
+    ctx.lineTo(-46, 11);
+    ctx.lineTo(-8, 3.5);
+    ctx.closePath();
+    ctx.fillStyle = wake;
+    ctx.fill();
+  }
+
+  // Outrigger booms and floats. Drawn before the hull so the hull overlaps them.
+  ctx.strokeStyle = "rgba(214, 190, 140, 0.95)";
+  ctx.lineWidth = 1.6;
+  ctx.lineCap = "round";
+  for (const side of [-1, 1] as const) {
+    for (const along of [4.5, -4.5]) {
+      ctx.beginPath();
+      ctx.moveTo(along, side * 1.8);
+      ctx.lineTo(along, side * 10.5);
+      ctx.stroke();
+    }
+    // The bamboo float: a thin spindle parallel to the hull.
+    ctx.beginPath();
+    ctx.ellipse(0, side * 10.5, 9.5, 1.9, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(226, 205, 155, 0.95)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(90, 74, 44, 0.8)";
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(214, 190, 140, 0.95)";
+    ctx.lineWidth = 1.6;
+  }
+
+  // Hull: pointed stem, straight run aft to a squared transom.
   ctx.beginPath();
-  ctx.moveTo(14, 0);
-  ctx.lineTo(-9, -7);
-  ctx.lineTo(-5, 0);
-  ctx.lineTo(-9, 7);
+  ctx.moveTo(13, 0);
+  ctx.quadraticCurveTo(7, -3.6, -1, -4.2);
+  ctx.lineTo(-9, -3.6);
+  ctx.lineTo(-9.5, 3.6);
+  ctx.lineTo(-1, 4.2);
+  ctx.quadraticCurveTo(7, 3.6, 13, 0);
   ctx.closePath();
-  ctx.fillStyle = "#ffffff";
-  ctx.shadowBlur = 12;
-  ctx.shadowColor = "rgba(255,255,255,0.8)";
+  ctx.fillStyle = "#f3f7fb";
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = "rgba(255,255,255,0.55)";
   ctx.fill();
   ctx.shadowBlur = 0;
   ctx.strokeStyle = "#0f172a";
   ctx.lineWidth = 1;
   ctx.stroke();
+
+  // Cabin roof, and the sheer stripe these boats are always painted with.
+  ctx.beginPath();
+  ctx.rect(-6.5, -2.6, 8.5, 5.2);
+  ctx.fillStyle = "rgba(37, 99, 155, 0.92)";
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(12, 0);
+  ctx.quadraticCurveTo(6, -2.2, -9, -2.6);
+  ctx.strokeStyle = "rgba(37, 99, 155, 0.75)";
+  ctx.lineWidth = 1.1;
+  ctx.stroke();
+
   ctx.restore();
 }
 

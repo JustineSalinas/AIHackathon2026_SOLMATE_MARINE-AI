@@ -14,8 +14,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ApiUnavailable, advise } from "@/lib/api";
-import type { AdviseRequest } from "@/lib/contracts";
+import {
+  ApiUnavailable,
+  advise,
+  checkHealth,
+  checkSafety,
+  planRoute,
+  recordVoyage,
+} from "@/lib/api";
+import type {
+  AdviseRequest,
+  MaintenanceRequest,
+  RouteRequest,
+  SafetyRequest,
+  VoyageRecord,
+} from "@/lib/contracts";
 import { fetchOpenMeteo } from "@/lib/environment";
 import { relativeBearing } from "@/lib/nautical";
 import { drawChart } from "@/lib/render-chart";
@@ -35,13 +48,25 @@ import {
   localConditions,
   placeVesselAtStart,
   rebuildRoute,
+  startPort,
   step,
+  toLatLon,
 } from "@/lib/simulation";
 import ControlPanel from "./ControlPanel";
 import TelemetryPanel from "./TelemetryPanel";
 
 const ADVISE_INTERVAL_MS = 1000;
 const SNAPSHOT_INTERVAL_MS = 200;
+/** Engine health is scored over a rolling window, so calling it faster than the
+ *  window moves buys nothing but load. */
+const HEALTH_INTERVAL_MS = 4000;
+/** Safety runs at the advisory rate, not the health rate: a threshold breach is
+ *  not something to average over a window. */
+const SAFETY_INTERVAL_MS = 1000;
+/** A route is planned at the dock, not every second. This is the re-plan floor
+ *  for a voyage already under way; the interesting re-plans are event-driven
+ *  (ports moved, direction reversed, voyage started). */
+const ROUTE_INTERVAL_MS = 30_000;
 
 export interface Snapshot {
   running: boolean;
@@ -62,6 +87,9 @@ export interface Snapshot {
   advisedFuelL: number;
   elapsedSeconds: number;
   api: SimState["api"];
+  routePlan: SimState["routePlan"];
+  health: Omit<SimState["health"], "frames"> & { frameCount: number };
+  safety: SimState["safety"];
   log: SimState["log"];
   liveForecast: boolean;
   timeScale: number;
@@ -76,6 +104,9 @@ export default function Simulator() {
   const dragRef = useRef<0 | 1 | null>(null);
   const basemapRef = useRef<HTMLImageElement | null>(null);
   const landMaskRef = useRef<LandMask | null>(null);
+  /** Tracks the arrival edge so a completed crossing is recorded once, not on
+   *  every frame the vessel spends sitting at the destination. */
+  const loggedArrivalRef = useRef(false);
   const [tool, setTool] = useState<Tool>("pointer");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [ready, setReady] = useState(false);
@@ -226,6 +257,221 @@ export default function Simulator() {
     return () => clearInterval(id);
   }, [ready, requestAdvice]);
 
+  // --- the route plan ------------------------------------------------------
+  //
+  // Berth to berth, in real coordinates. Note what is NOT sent: the sea state.
+  // `/advise` is told the conditions at the vessel because it is answering about
+  // right now; the route planner reads its own forecast forward along the track,
+  // which is the whole difference between the two products. The response says
+  // which forecaster answered in `forecast_source`, and the display shows it.
+
+  const requestRoute = useCallback(async () => {
+    const state = stateRef.current;
+    if (state.width === 0 || state.routePlan.planning) return;
+
+    const from = startPort(state);
+    const to = endPort(state);
+    const body: RouteRequest = {
+      vessel: {
+        vessel_id: "MV-SOLMATE-01",
+        length_waterline_m: 11.5,
+        beam_m: 2.8,
+        draft_m: 1.1,
+        displacement_kg: 8500,
+        rated_kw: 90,
+        rated_rpm: state.ratedRpm,
+        admiralty_coefficient: 70,
+        best_bsfc_g_per_kwh: 215,
+        idle_burn_lph: 1.2,
+      },
+      origin: { ...toLatLon(state, from.position), name: from.name },
+      destination: { ...toLatLon(state, to.position), name: to.name },
+      minutes_available: state.scheduleMinutes,
+      passenger_count: state.passengers,
+      cargo_kg: state.cargoKg,
+      egt_excess_ratio: state.egtExcess > 1.0001 ? state.egtExcess : 1.0,
+    };
+
+    state.routePlan.planning = true;
+    try {
+      const response = await planRoute(body);
+      state.routePlan.response = response;
+      state.routePlan.error = null;
+      state.routePlan.lastRequestAt = performance.now();
+
+      const rec = response.recommendation;
+      const notes = rec.constraint_notes ?? [];
+      if (notes.length > 0) addLog(state, notes[0], "warn");
+      if (!response.schedule_feasible) {
+        addLog(state, "Route planned, but the schedule cannot be held.", "alert");
+      }
+    } catch (error) {
+      state.routePlan.error =
+        error instanceof ApiUnavailable ? error.message : "route service error";
+    } finally {
+      state.routePlan.planning = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    void requestRoute();
+    const id = setInterval(() => void requestRoute(), ROUTE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [ready, requestRoute]);
+
+  // --- engine health -------------------------------------------------------
+  //
+  // The window of emulated frames is filled by lib/simulation.ts; this only
+  // ships it. The detector is unsupervised and Phase 1 by contract: it may name
+  // a deviating stream and no more, so there is nothing here to translate into a
+  // component or a repair date, and by construction there could not be.
+
+  const requestHealth = useCallback(async () => {
+    const state = stateRef.current;
+    const frames = state.health.frames;
+    // The detector's trend arm splits the window in half and needs four frames
+    // to compare. Below that there is genuinely nothing to say.
+    if (frames.length < 4) return;
+
+    const body: MaintenanceRequest = {
+      vessel_id: "MV-SOLMATE-01",
+      frames: frames.slice(),
+      observed_hours: state.engineHours,
+    };
+
+    try {
+      const status = await checkHealth(body);
+      const wasAnomalous = state.health.status?.is_anomalous ?? false;
+      state.health.status = status;
+      state.health.error = null;
+      state.health.lastRequestAt = performance.now();
+
+      // Log the transition, not the state: a standing anomaly that re-logged
+      // every four seconds would bury everything else in the event log.
+      if (status.is_anomalous && !wasAnomalous) {
+        addLog(state, status.advisory_en, "warn");
+      } else if (!status.is_anomalous && wasAnomalous) {
+        addLog(state, "Engine streams back within their learned normal.");
+      }
+    } catch (error) {
+      state.health.error =
+        error instanceof ApiUnavailable ? error.message : "maintenance service error";
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    const id = setInterval(() => void requestHealth(), HEALTH_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [ready, requestHealth]);
+
+  // --- safety cutoffs ------------------------------------------------------
+  //
+  // The newest frame, every second, against fixed thresholds. Faster than the
+  // health window because a cutoff is not an average -- it fires on the reading
+  // in front of it, and a coolant alarm delayed by a two-minute window is a
+  // coolant alarm that arrives after the damage.
+  //
+  // Nothing here consults a model, on either side of the wire.
+
+  const requestSafety = useCallback(async () => {
+    const state = stateRef.current;
+    const latest = state.health.frames[state.health.frames.length - 1];
+    if (!latest) return;
+
+    const body: SafetyRequest = { vessel_id: "MV-SOLMATE-01", frame: latest };
+
+    try {
+      const previous = state.safety.state?.severity ?? "nominal";
+      const next = await checkSafety(body);
+      state.safety.state = next;
+      state.safety.error = null;
+      state.safety.lastRequestAt = performance.now();
+
+      // Log the transition, not the standing state: a critical that re-logged
+      // every second would bury the entry that explains it.
+      if (next.severity !== previous && next.active && next.active.length > 0) {
+        addLog(
+          state,
+          next.active[0].message_en,
+          next.severity === "critical" ? "alert" : "warn",
+        );
+      } else if (next.severity === "nominal" && previous !== "nominal") {
+        addLog(state, "Safety cutoffs clear.");
+      }
+    } catch (error) {
+      state.safety.error =
+        error instanceof ApiUnavailable ? error.message : "safety service error";
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    const id = setInterval(() => void requestSafety(), SAFETY_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [ready, requestSafety]);
+
+  // --- recording the voyage ------------------------------------------------
+  //
+  // On arrival, once. This is the write side of Problem 3: the monthly emissions
+  // report is an aggregate over these records, so a crossing that finishes
+  // without being recorded is one the operator has no evidence for.
+  //
+  // **No baseline is sent, deliberately**, and this is the subtle part.
+  //
+  // The simulator has two fuel figures: `fuelUsedL`, burned at the throttle the
+  // captain actually held, and `advisedFuelL`, what the same crossing would have
+  // burned had the advisory been followed. It is tempting to send the second as
+  // the baseline. It is also wrong.
+  //
+  // A baseline is what the vessel would have burned *without Marine-AI*. In this
+  // demo the captain does not follow the advisory, so `advisedFuelL` is the
+  // opposite: what would have burned *with* it. Sending it produces an "avoided"
+  // figure that is really a foregone saving with its sign flipped -- which is
+  // exactly the sort of number that makes an emissions report unusable as
+  // evidence.
+  //
+  // So the record carries what was truly burned and no baseline at all. The
+  // report then supplies the *right* baseline on its own: after three crossings
+  // it uses this vessel's own median fuel-per-mile on this route, which is the
+  // measured comparison the technical profile actually promises. Until then it
+  // reports fuel and CO2 and declines to report avoided CO2, which is the honest
+  // answer rather than a convenient one.
+
+  const submitVoyage = useCallback(async (state: SimState) => {
+    const from = startPort(state);
+    const to = endPort(state);
+    const departedMs = state.simClockMs - state.voyage.elapsedSeconds * 1000;
+
+    const body: VoyageRecord = {
+      voyage_id: `${state.simClockMs}-${from.name}-${to.name}`
+        .replace(/[^a-zA-Z0-9-]+/g, "-")
+        .toLowerCase(),
+      vessel_id: "MV-SOLMATE-01",
+      departed_at: new Date(departedMs).toISOString(),
+      arrived_at: new Date(state.simClockMs).toISOString(),
+      origin_name: from.name,
+      destination_name: to.name,
+      distance_nm: state.crossingNm,
+      fuel_used_l: state.voyage.fuelUsedL,
+      baseline_fuel_l: null,
+      baseline_method: "none",
+      passenger_count: state.passengers,
+      cargo_kg: state.cargoKg,
+      source: "simulator",
+    };
+
+    try {
+      await recordVoyage(body);
+      addLog(state, `Voyage logged: ${state.voyage.fuelUsedL.toFixed(2)} L for the emissions record.`);
+    } catch {
+      // A failed write must not lose the crossing silently. The captain is not
+      // going to retry this by hand, so say it happened.
+      addLog(state, "Voyage could not be logged; emissions record incomplete.", "warn");
+    }
+  }, []);
+
   // --- live forecast -------------------------------------------------------
 
   useEffect(() => {
@@ -266,6 +512,13 @@ export default function Simulator() {
       step(state, dt);
       if (state.running) rebuildRoute(state);
 
+      if (state.arrived && !loggedArrivalRef.current) {
+        loggedArrivalRef.current = true;
+        void submitVoyage(state);
+      } else if (!state.arrived && loggedArrivalRef.current) {
+        loggedArrivalRef.current = false;
+      }
+
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext("2d");
       if (ctx && state.width > 0) {
@@ -273,6 +526,12 @@ export default function Simulator() {
         const preset = WEATHER[state.env.weather];
 
         if (state.pov === "helm") {
+          // Where the eye actually is, in real coordinates. The helm view needs
+          // it to place the sun.
+          const eye = toLatLon(state, {
+            x: state.width ? state.vessel.position.x / state.width : 0.5,
+            y: state.height ? state.vessel.position.y / state.height : 0.5,
+          });
           drawHelm(ctx, {
             width: state.width,
             height: state.height,
@@ -287,6 +546,11 @@ export default function Simulator() {
             windDirectionDeg: local.wind_direction_deg ?? 0,
             gloom: preset.gloom,
             rain: preset.rain,
+            // The sun is placed from the simulated clock and the vessel's real
+            // position, so the light matches the hour the voyage is running at.
+            atMs: state.simClockMs,
+            latitude: eye.latitude,
+            longitude: eye.longitude,
             horizon: landMaskRef.current
               ? horizonProfile(
                   landMaskRef.current,
@@ -335,7 +599,7 @@ export default function Simulator() {
 
     frame = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frame);
-  }, [ready]);
+  }, [ready, submitVoyage]);
 
   // --- pointer interaction -------------------------------------------------
 
@@ -397,7 +661,8 @@ export default function Simulator() {
   const endDrag = () => {
     if (dragRef.current !== null) {
       dragRef.current = null;
-      addLog(stateRef.current, "Port moved. Route re-shaped.");
+      addLog(stateRef.current, "Port moved. Route re-planned.");
+      void requestRoute();
     }
   };
 
@@ -408,25 +673,36 @@ export default function Simulator() {
     setSnapshot(buildSnapshot(stateRef.current));
   }, []);
 
-  const toggleVoyage = () =>
+  // A voyage that starts or reverses is a different voyage, so it gets a fresh
+  // plan rather than inheriting the last one's numbers.
+  const toggleVoyage = () => {
+    let started = false;
     mutate((state) => {
       if (state.arrived) {
         placeVesselAtStart(state);
         state.running = true;
+        started = true;
         addLog(state, "New voyage started.", "advisory");
         return;
       }
       state.running = !state.running;
+      started = state.running;
       addLog(state, state.running ? "Under way." : "Voyage paused.", "advisory");
     });
+    if (started) void requestRoute();
+  };
 
-  const swapPorts = () =>
+  const swapPorts = () => {
+    let swapped = false;
     mutate((state) => {
       if (state.running) return;
       state.direction = state.direction === 1 ? -1 : 1;
       placeVesselAtStart(state);
+      swapped = true;
       addLog(state, `Now bound for ${endPort(state).name}.`);
     });
+    if (swapped) void requestRoute();
+  };
 
   return (
     <div className="flex h-screen w-screen flex-col bg-slate-950 text-slate-100">
@@ -558,6 +834,10 @@ function buildSnapshot(state: SimState): Snapshot {
     windDirectionDeg: local.wind_direction_deg ?? 0,
     gloom: 0,
     rain: 0,
+    // Roll and pitch do not depend on the light, but the scene type carries it.
+    atMs: state.simClockMs,
+    latitude: 0,
+    longitude: 0,
     horizon: [],
   });
 
@@ -580,6 +860,19 @@ function buildSnapshot(state: SimState): Snapshot {
     advisedFuelL: state.voyage.advisedFuelL,
     elapsedSeconds: state.voyage.elapsedSeconds,
     api: { ...state.api },
+    routePlan: { ...state.routePlan },
+    // The window itself never crosses into React state. It is up to 120 frames
+    // rebuilt five times a second, and copying it into the snapshot would hand
+    // the panel a large object it only ever wants the length of.
+    health: {
+      status: state.health.status,
+      error: state.health.error,
+      lastRequestAt: state.health.lastRequestAt,
+      ageSeconds: state.health.ageSeconds,
+      nextFrameAtMs: state.health.nextFrameAtMs,
+      frameCount: state.health.frames.length,
+    },
+    safety: { ...state.safety },
     log: state.log.slice(0, 24),
     liveForecast: state.liveForecast,
     timeScale: state.timeScale,

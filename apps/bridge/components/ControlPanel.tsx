@@ -11,9 +11,22 @@
 import type { RefObject } from "react";
 
 import { WEATHER, type WeatherPreset } from "@/lib/environment";
+import { FAULTS, type FaultKind } from "@/lib/telemetry";
 import type { SimState } from "@/lib/simulation";
-import { placeVesselAtStart, rebuildRoute } from "@/lib/simulation";
+import { phtClock, placeVesselAtStart, rebuildRoute } from "@/lib/simulation";
 import type { Snapshot } from "./Simulator";
+
+/** Simulated clock -> hours past midnight, Philippine time. */
+function hoursPht(ms: number): number {
+  const d = new Date(ms + 8 * 3_600_000);
+  return d.getUTCHours() + d.getUTCMinutes() / 60;
+}
+
+function formatPht(hours: number): string {
+  const h = Math.floor(hours);
+  const m = Math.round((hours % 1) * 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} PHT`;
+}
 
 interface Props {
   state: RefObject<SimState>;
@@ -55,6 +68,26 @@ export default function ControlPanel({ state, snapshot, onMutate }: Props) {
             format={(v) => `${v.toFixed(0)} min`}
             onChange={(v) => onMutate((st) => (st.scheduleMinutes = v))}
           />
+          <Slider
+            label="Time of day"
+            value={hoursPht(s.simClockMs)}
+            min={0}
+            max={23.75}
+            step={0.25}
+            format={formatPht}
+            onChange={(v) =>
+              onMutate((st) => {
+                st.simClockMs = phtClock(v);
+                // Re-anchor the telemetry emitter, or a jump backwards would
+                // stall the health window until the clock caught up again.
+                st.health.nextFrameAtMs = st.simClockMs;
+              })
+            }
+          />
+          <p className="text-[11px] leading-snug text-slate-500">
+            Drives the sun in the helm view — real solar position for Iloilo, not
+            a lighting preset. 05:40 is the first crossing of the day.
+          </p>
         </Group>
 
         <Group title="Engine condition">
@@ -69,7 +102,46 @@ export default function ControlPanel({ state, snapshot, onMutate }: Props) {
           />
           <p className="text-[11px] leading-snug text-slate-500">
             Exhaust running hot at the same load is the wear signature. The fuel
-            penalty is predicted by the model trained on UCI CBM.
+            penalty is predicted by the model trained on UCI CBM — and the same
+            signal moves the health panel, which is the Problem 1 → Problem 2 link.
+          </p>
+        </Group>
+
+        <Group title="Engine fault">
+          <label className="block">
+            <span className="mb-1 block text-[11px] text-slate-400">Inject</span>
+            <select
+              value={s.fault.kind}
+              onChange={(e) =>
+                onMutate((st) => {
+                  st.fault.kind = e.target.value as FaultKind;
+                  if (st.fault.kind !== "none" && st.fault.sigmas < 0.5) st.fault.sigmas = 3;
+                })
+              }
+              className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs"
+            >
+              {FAULTS.map((fault) => (
+                <option key={fault.id} value={fault.id} title={fault.hint}>
+                  {fault.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {s.fault.kind !== "none" && (
+            <Slider
+              label="Severity"
+              value={s.fault.sigmas}
+              min={0}
+              max={8}
+              step={0.5}
+              format={(v) => `${v.toFixed(1)}σ`}
+              onChange={(v) => onMutate((st) => (st.fault.sigmas = v))}
+            />
+          )}
+          <p className="text-[11px] leading-snug text-slate-500">
+            Opening the throttle raises coolant and exhaust together and is{" "}
+            <em>not</em> an anomaly — that is the correlation the detector learned.
+            Moving one stream alone is.
           </p>
         </Group>
 

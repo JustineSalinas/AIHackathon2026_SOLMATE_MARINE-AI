@@ -17,7 +17,8 @@ collected from any vessel.
 | `nasa-cmapss` | NASA C-MAPSS turbofan degradation (Saxena et al., 2008) | Public domain (US Gov) | Pretraining the Phase 1 anomaly detector |
 | `natural-earth-coastline` | Natural Earth 10m physical coastline | Public domain | Chart geometry on the bridge display |
 | `sentinel2-cloudless` | Sentinel-2 cloudless 2020 (EOX) | CC BY 4.0 | Satellite basemap, and the land mask the helm view ray-casts for its horizon |
-| Open-Meteo Marine API | open-meteo.com | CC BY 4.0, free tier | Live and historical wind, wave, current |
+| `open-meteo-weather-archive` | Open-Meteo Historical Weather API (ERA5 reanalysis) | CC BY 4.0 | Route forecaster's wind targets — 2.6 years, 9-point grid |
+| `open-meteo-marine-archive` | Open-Meteo Marine Weather API (wave + ocean current models) | CC BY 4.0 | Route forecaster's wave/current targets — same grid and range |
 | ~~GEBCO~~ | GEBCO global bathymetry grid | Public, attribution required | Depth safety constraint — **not yet integrated**, and deliberately absent from `data/registry.py` so `data/download.py` cannot fetch a source we do not use. Route Optimization is the module that needs it. |
 
 **PAGASA** is named in the technical profile but has **no public programmatic
@@ -139,6 +140,33 @@ its complexity that will be visible rather than assumed.
 The honest weakness: load is sampled at only **7 distinct points**. The wear
 axis is dense and trustworthy; the load axis is interpolated between coarse
 steps. This is recorded in `known_limits` in the model card.
+
+---
+
+## The route forecaster's data
+
+Fetched with `python -m data.fetch_route_forecast` (not `data/download.py` —
+see the caveats on the two registry entries above for why), into
+`data/raw/route_forecast/`. **196,272 hourly rows**, 9 grid points spanning
+the Iloilo Strait operating box (`lat 10.58-10.78, lon 122.46-122.72`, matching
+the bridge display's own chart bounds), **2024-01-29 to 2026-07-29**. 936 rows
+(0.48%) dropped for a missing current reading, never imputed.
+
+Nine targets were trained and evaluated against a climatological lookup-table
+baseline on a held-out six-month window. Four won as gradient-boosted
+regressors (wind and wave direction); five did not beat the lookup table and
+ship as the lookup table instead. See `docs/DEVIATIONS.md` §13 for the full
+reasoning and `models/route_forecast.card.json` for every target's MAE, R²,
+and which method it shipped as.
+
+**What this is not.** A live nowcast — see §13 for why `/route` has no recent
+observed sea state to forecast forward from, and why the model answers with
+the climatological expectation for a position and an absolute time instead.
+Buoy-measured — ERA5 and the Marine API's wave/current models are reanalysis
+and blended model output, and the Iloilo Strait is narrow and partly
+land-sheltered, which coarse ocean models under-resolve. A multi-year
+climatology — under three years of pulled history is one monsoon transition,
+not a certified seasonal record.
 
 ---
 

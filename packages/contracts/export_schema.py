@@ -23,15 +23,24 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from apps.api.schemas import AdviseRequest, AdviseResponse
+from apps.api.schemas import (
+    AdviseRequest,
+    AdviseResponse,
+    MaintenanceRequest,
+    RouteRequest,
+    RouteResponse,
+    SafetyRequest,
+)
 from packages.contracts import (
     BridgeState,
+    EmissionsReport,
     MaintenanceStatus,
     RouteRecommendation,
     SafetyState,
     SpeedRecommendation,
     TelemetryFrame,
     VesselProfile,
+    VoyageRecord,
 )
 
 OUTPUT = Path("apps/bridge/lib/contracts.ts")
@@ -39,6 +48,12 @@ OUTPUT = Path("apps/bridge/lib/contracts.ts")
 EXPORTED: tuple[type[BaseModel], ...] = (
     AdviseRequest,
     AdviseResponse,
+    RouteRequest,
+    RouteResponse,
+    MaintenanceRequest,
+    SafetyRequest,
+    VoyageRecord,
+    EmissionsReport,
     BridgeState,
     SpeedRecommendation,
     RouteRecommendation,

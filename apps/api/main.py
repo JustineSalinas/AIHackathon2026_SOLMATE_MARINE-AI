@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from typing import TypeVar
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.schemas import (
@@ -26,10 +28,29 @@ from apps.api.schemas import (
     AdviseResponse,
     CurvePoint,
     EmissionsOut,
+    MaintenanceRequest,
     PowerOut,
+    RouteRequest,
+    RouteResponse,
+    SafetyRequest,
     WearOut,
 )
+from packages.contracts.emissions import EmissionsReport, VoyageRecord
+from packages.contracts.maintenance import MaintenanceStatus
+from packages.contracts.route import RouteRecommendation
+from packages.contracts.safety import SafetyState
+from packages.contracts.speed import SpeedRecommendation
+from packages.store import VoyageStore, open_store
+from services.advisory import enabled as advisory_enabled
+from services.advisory import phrase
 from services.emissions import co2_kg
+from services.emissions.report import build_report, to_csv
+from services.maintenance.baseline import synthetic_healthy_baseline
+from services.maintenance.detector import detect
+from services.route.forecast import load_forecast
+from services.route.geo import LatLon
+from services.route.planner import as_route_recommendation, plan_route
+from services.safety import evaluate as evaluate_safety
 from services.speed.fuel import EngineSpec, FuelMap
 from services.speed.optimizer import (
     as_recommendation,
@@ -42,6 +63,9 @@ from services.speed.resistance import SeaState, VesselHull
 
 _state: dict[str, object] = {}
 
+#: Any wire model carrying `advisory_en` / `advisory_fil` / `advisory_source`.
+T = TypeVar("T", SpeedRecommendation, RouteRecommendation, MaintenanceStatus)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -53,6 +77,17 @@ async def lifespan(app: FastAPI):
     mode is active rather than leaving the client to guess.
     """
     _state["fuel_map_loaded"] = FuelMap.load(EngineSpec(rated_kw=90.0, rated_rpm=2800.0))
+    # The forecaster is loaded once too. `load_forecast` degrades to the analytic
+    # field when no trained artifact exists, so `/route` serves on a fresh clone.
+    _state["forecast"] = load_forecast()
+    # A demo maintenance baseline. In production this is a per-vessel baseline
+    # fitted from that engine's own healthy history; the synthetic one lets
+    # `/maintenance` answer before any real telemetry has been logged.
+    _state["maintenance_baseline"] = synthetic_healthy_baseline()
+    # Voyage records for the monthly emissions report. `open_store` degrades to
+    # an in-memory store on a read-only filesystem -- the serverless case -- and
+    # every report generated from it carries that fact in its caveats.
+    _state["voyages"] = open_store()
     yield
     _state.clear()
 
@@ -107,12 +142,36 @@ def _fuel_map_for(spec: EngineSpec) -> FuelMap:
     return FuelMap(spec, wear_model=wear_model, load_range=load_range)
 
 
+async def _phrased(recommendation: T, *, kind: str) -> T:
+    """Swap in Claude's wording of the advisory this object already carries.
+
+    Applied here, at the boundary, rather than inside the services: the modules
+    that decide stay deterministic, synchronous and model-free, and every test
+    of `optimise_throttle`, `plan_route` and `detect` keeps asserting on the
+    template it always did. What leaves the API is the same decision, better
+    said -- and `advisory_source` names the author of the sentence in the frame.
+    """
+    phrasing = await phrase(
+        kind=kind,
+        template_en=recommendation.advisory_en,
+        template_fil=recommendation.advisory_fil,
+    )
+    return recommendation.model_copy(
+        update={
+            "advisory_en": phrasing.en,
+            "advisory_fil": phrasing.fil,
+            "advisory_source": phrasing.source,
+        }
+    )
+
+
 @app.get("/health")
 async def health() -> dict:
     loaded = _state.get("fuel_map_loaded")
     return {
         "status": "ok",
         "wear_model_loaded": bool(getattr(loaded, "has_wear_model", False)),
+        "advisory_layer": "claude" if advisory_enabled() else "template",
         "advisory_only": True,
     }
 
@@ -182,8 +241,9 @@ async def advise(req: AdviseRequest) -> AdviseResponse:
     php = req.php_per_litre
 
     return AdviseResponse(
-        recommendation=as_recommendation(
-            advice, vessel_id=req.vessel.vessel_id, php_per_litre=php
+        recommendation=await _phrased(
+            as_recommendation(advice, vessel_id=req.vessel.vessel_id, php_per_litre=php),
+            kind="throttle",
         ),
         power=PowerOut(
             total_kw=best.power.total_kw,
@@ -219,3 +279,146 @@ async def advise(req: AdviseRequest) -> AdviseResponse:
         notes=list(advice.notes) + list(best.burn.caveats),
         model_trained=fuel_map.has_wear_model,
     )
+
+
+@app.post("/route", response_model=RouteResponse)
+async def route(req: RouteRequest) -> RouteResponse:
+    """Cheapest depth- and weather-feasible track from origin to destination.
+
+    Scored on the *same* fuel model as `/advise` -- each leg is costed through the
+    identical throttle optimizer -- so the route's litres and the throttle
+    advisor's litres can never come from two different models. The forecast along
+    the track comes from the loaded forecaster; on a fresh clone that is the
+    analytic field, and `recommendation.forecast_source` says so.
+    """
+    hull = VesselHull(
+        length_waterline_m=req.vessel.length_waterline_m,
+        beam_m=req.vessel.beam_m,
+        draft_m=req.vessel.draft_m,
+        displacement_kg=req.vessel.displacement_kg,
+        admiralty_coefficient=req.vessel.admiralty_coefficient,
+    )
+    spec = EngineSpec(
+        rated_kw=req.vessel.rated_kw,
+        rated_rpm=req.vessel.rated_rpm,
+        best_bsfc_g_per_kwh=req.vessel.best_bsfc_g_per_kwh,
+        idle_burn_lph=req.vessel.idle_burn_lph,
+    )
+    fuel_map = _fuel_map_for(spec)
+    forecast = _state.get("forecast")
+
+    depart = req.depart_at or datetime.now(UTC)
+    plan = plan_route(
+        LatLon(req.origin.latitude, req.origin.longitude),
+        LatLon(req.destination.latitude, req.destination.longitude),
+        hull=hull,
+        spec=spec,
+        fuel_map=fuel_map,
+        forecast=forecast,
+        depart=depart,
+        minutes_available=req.minutes_available,
+        added_load_kg=req.added_load_kg,
+        egt_excess_ratio=req.egt_excess_ratio,
+    )
+
+    return RouteResponse(
+        recommendation=await _phrased(
+            as_route_recommendation(plan, vessel_id=req.vessel.vessel_id, depart=depart),
+            kind="route",
+        ),
+        schedule_feasible=plan.chosen.schedule_feasible,
+        model_trained=fuel_map.has_wear_model,
+    )
+
+
+@app.post("/maintenance", response_model=MaintenanceStatus)
+async def maintenance(req: MaintenanceRequest) -> MaintenanceStatus:
+    """Phase 1 engine-health status from a window of recent telemetry.
+
+    Unsupervised anomaly detection against the vessel's learned normal. By the
+    contract's own validator the returned status cannot name a component or a
+    repair date -- a cold-start unit may say which sensor stream is deviating, and
+    no more. That fairness commitment is enforced here, not merely intended.
+    """
+    baseline = _state.get("maintenance_baseline")
+    return await _phrased(
+        detect(
+            req.frames,
+            baseline,
+            vessel_id=req.vessel_id,
+            observed_hours=req.observed_hours,
+        ),
+        kind="engine health",
+    )
+
+
+@app.post("/voyages", response_model=VoyageRecord, status_code=201)
+async def record_voyage(voyage: VoyageRecord) -> VoyageRecord:
+    """Store one completed crossing.
+
+    The write side of Problem 3. A monthly report needs a month of voyages to
+    exist somewhere, and until this endpoint every part of the system answered
+    from the request in front of it and forgot it.
+
+    Re-posting the same `voyage_id` replaces the record rather than duplicating
+    it, so a display that retries after a dropped connection cannot inflate an
+    operator's fuel total.
+    """
+    store: VoyageStore = _state["voyages"]  # type: ignore[assignment]
+    store.record(voyage)
+    return voyage
+
+
+@app.get("/emissions/report", response_model=EmissionsReport)
+async def emissions_report(
+    vessel_id: str = "MV-DEMO-01",
+    year: int | None = None,
+    month: int | None = None,
+) -> EmissionsReport:
+    """The monthly CO2-avoided report — Problem 3's deliverable.
+
+    Defaults to the current month. The report carries its own baseline method and
+    caveats; see `services/emissions/report.py` for why a voyage with no baseline
+    contributes fuel and CO2 but not avoided CO2.
+    """
+    store: VoyageStore = _state["voyages"]  # type: ignore[assignment]
+    today = datetime.now(UTC)
+    return build_report(vessel_id, year or today.year, month or today.month, store)
+
+
+@app.get("/emissions/report.csv")
+async def emissions_report_csv(
+    vessel_id: str = "MV-DEMO-01",
+    year: int | None = None,
+    month: int | None = None,
+) -> Response:
+    """The same report as CSV — the *exportable* half of "exportable evidence".
+
+    CSV rather than PDF deliberately: the recipient can re-add the column
+    themselves, which is the whole point of an auditable document.
+    """
+    store: VoyageStore = _state["voyages"]  # type: ignore[assignment]
+    today = datetime.now(UTC)
+    report = build_report(vessel_id, year or today.year, month or today.month, store)
+    filename = f"marine-ai-emissions-{report.vessel_id}-{report.year}-{report.month:02d}.csv"
+    return Response(
+        content=to_csv(report),
+        media_type="text/csv",
+        headers={"content-disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/safety", response_model=SafetyState)
+async def safety(req: SafetyRequest) -> SafetyState:
+    """Rule-based safety cutoffs for one telemetry frame.
+
+    The deliberately boring endpoint, and the answer to "what happens when your
+    model is wrong": nothing here consults a model. No artifact is loaded, no
+    state is carried between requests, and the same frame returns the same
+    verdict forever. The AI modules advise; this one is arithmetic against
+    thresholds a mechanic could check against an engine manual.
+
+    It is still advisory. Marine-AI does not actuate the vessel -- a cutoff
+    raises an alarm on the bridge and the captain decides what to do about it.
+    """
+    return evaluate_safety(req.frame, vessel_id=req.vessel_id)

@@ -1,6 +1,8 @@
 # Data — never committed. Fetch with `python -m data.download`.
 /data/raw/
 /data/processed/
+# Voyage records: runtime state, per-deployment, never part of the repo.
+/data/voyages.db
 *.csv
 *.parquet
 *.nc

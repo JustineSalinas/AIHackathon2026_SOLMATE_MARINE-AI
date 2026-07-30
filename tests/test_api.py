@@ -8,6 +8,8 @@ HTTP round trip.
 
 from __future__ import annotations
 
+import math
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -215,3 +217,258 @@ def test_emissions_come_from_the_same_burn_figure(client):
     body = advise(client, minutes_available=20.0)
     lph = body["recommendation"]["predicted_burn_lph"]
     assert body["emissions"]["co2_kg_per_hour"] == pytest.approx(lph * 2.68, rel=1e-6)
+
+
+# --- Route Optimization -----------------------------------------------------
+
+# A short coastal hop that crosses the analytic field's default wind/current
+# band, so the optimiser has a real reason to bow the track.
+ROUTE_BODY = {
+    "origin": {"latitude": 10.75, "longitude": 123.0},
+    "destination": {"latitude": 10.75, "longitude": 123.4},
+    "minutes_available": 120.0,
+}
+
+
+def plan(client, **kwargs) -> dict:
+    r = client.post("/route", json={**ROUTE_BODY, **kwargs})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_route_returns_a_wellformed_track(client):
+    body = plan(client)
+    rec = body["recommendation"]
+    assert len(rec["waypoints"]) >= 2
+    assert rec["total_distance_nm"] > 0
+    assert rec["predicted_burn_l"] > 0
+    assert rec["eta"] is not None
+
+
+def test_route_reports_its_forecast_source(client):
+    """Whichever forecaster is behind `/route`, the response says which one --
+    never silently claims a real forecast it did not make. `gbm_climatology`
+    is the trained artifact committed to the repo; `analytic_field` is what a
+    checkout without it falls back to. Either is a pass; a third value is not."""
+    rec = plan(client)["recommendation"]
+    assert rec["forecast_source"] in {"analytic_field", "gbm_climatology"}
+
+
+def test_route_savings_are_baseline_minus_predicted(client):
+    rec = plan(client)["recommendation"]
+    assert rec["savings_l"] == pytest.approx(
+        rec["baseline_burn_l"] - rec["predicted_burn_l"], rel=1e-9
+    )
+
+
+def test_route_advisory_is_bilingual_and_never_imperative(client):
+    rec = plan(client)["recommendation"]
+    assert rec["advisory_en"] and rec["advisory_fil"]
+    assert rec["advisory_en"] != rec["advisory_fil"]
+    for banned in ("steer", "turn to", "head for", "go around"):
+        assert banned not in rec["advisory_en"].lower()
+
+
+def test_route_bad_input_is_rejected_not_coerced(client):
+    assert client.post("/route", json={}).status_code == 422  # origin/destination required
+    assert (
+        client.post(
+            "/route",
+            json={**ROUTE_BODY, "origin": {"latitude": 999, "longitude": 0}},
+        ).status_code
+        == 422
+    )
+
+
+# --- Predictive Maintenance (Phase 1) ---------------------------------------
+
+
+def em_window(n=30, **channels) -> list[dict]:
+    """A window of telemetry frames at healthy operating values, moving any named
+    electro-mechanical channel."""
+    healthy = {
+        "coolant_temp_c": 82.0,
+        "oil_pressure_kpa": 350.0,
+        "battery_voltage_v": 13.8,
+        "exhaust_gas_temp_c": 380.0,
+        "oil_particulate_ppm": 15.0,
+        "exhaust_nox_ppm": 600.0,
+    }
+    healthy.update(channels)
+    frames = []
+    for i in range(n):
+        em = dict(healthy)
+        # Vibration at the healthy baseline level (~0.05 g RMS): a sinusoid of
+        # amplitude ~0.041 per axis gives var A^2/2, summing to ~0.05 g across the
+        # three axes. Zero-amplitude accel would read as an (anomalously) dead
+        # engine against a baseline that expects some vibration.
+        a = 0.0408
+        em |= {
+            "accel_x_g": a * math.sin(i),
+            "accel_y_g": a * math.sin(i + 2.0),
+            "accel_z_g": 1.0 + a * math.sin(i + 4.0),
+        }
+        frames.append(
+            {
+                "vessel_id": "MV-DEMO-01",
+                "ts": f"2026-07-23T06:00:{i:02d}+00:00",
+                "electro_mechanical": em,
+            }
+        )
+    return frames
+
+
+def maint(client, **channels) -> dict:
+    r = client.post("/maintenance", json={"frames": em_window(**channels)})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_maintenance_healthy_window_is_nominal(client):
+    body = maint(client)
+    assert body["phase"] == "phase_1_cold_start"
+    assert body["is_anomalous"] is False
+    assert body["anomaly_score"] < 0.6
+
+
+def test_maintenance_flags_a_coolant_spike_and_stays_phase1(client):
+    body = maint(client, coolant_temp_c=98.0)
+    assert body["is_anomalous"] is True
+    assert body["streams"][0]["stream"] == "electro_mechanical.coolant_temp_c"
+    assert "coolant" in body["advisory_en"].lower()
+    # The cold-start fairness rule: no component, no date, no RUL, ever.
+    assert body["likely_component"] is None
+    assert body["recommended_maintenance_date"] is None
+    assert body["remaining_useful_life_days"] is None
+
+
+def test_maintenance_requires_at_least_one_frame(client):
+    assert client.post("/maintenance", json={"frames": []}).status_code == 422
+
+
+# --- POST /safety -----------------------------------------------------------
+
+
+def safety(client, *, rpm=1900.0, **channels) -> dict:
+    """Evaluate one frame against the rule set."""
+    em = {
+        "coolant_temp_c": 82.0,
+        "oil_pressure_kpa": 350.0,
+        "battery_voltage_v": 13.8,
+        "exhaust_gas_temp_c": 380.0,
+        **channels,
+    }
+    body = {
+        "vessel_id": "MV-DEMO-01",
+        "frame": {
+            "vessel_id": "MV-DEMO-01",
+            "ts": "2026-07-26T06:00:00+00:00",
+            "throttling": {"engine_rpm": rpm},
+            "electro_mechanical": em,
+        },
+    }
+    response = client.post("/safety", json=body)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_safety_healthy_engine_is_nominal(client):
+    body = safety(client)
+    assert body["severity"] == "nominal"
+    assert body["active"] == []
+    assert body["evaluated_rules"] > 0
+
+
+def test_safety_coolant_overtemp_is_critical(client):
+    body = safety(client, coolant_temp_c=110.0)
+    assert body["severity"] == "critical"
+    assert body["active"][0]["rule_id"] == "coolant_overtemp"
+    assert body["active"][0]["observed"] == 110.0
+    assert body["active"][0]["message_fil"]
+
+
+def test_safety_reports_skipped_rules_rather_than_assuming_safe(client):
+    """A retrofit missing a channel must not read as a healthy engine."""
+    response = client.post(
+        "/safety",
+        json={
+            "frame": {
+                "vessel_id": "v",
+                "ts": "2026-07-26T06:00:00+00:00",
+                "electro_mechanical": {"coolant_temp_c": 82.0},
+            }
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert "oil_pressure_low" in body["skipped_rules"]
+    assert body["severity"] == "nominal"
+
+
+def test_safety_is_deterministic_across_requests(client):
+    """The endpoint carries no state; the same frame answers the same way."""
+    first = safety(client, coolant_temp_c=101.0)
+    for _ in range(5):
+        again = safety(client, coolant_temp_c=101.0)
+        assert again["severity"] == first["severity"]
+        assert [c["rule_id"] for c in again["active"]] == [
+            c["rule_id"] for c in first["active"]
+        ]
+
+
+# --- Voyages and the emissions report ---------------------------------------
+
+
+def _voyage(n: int, *, fuel: float, baseline: float | None = None) -> dict:
+    return {
+        "voyage_id": f"api-v{n}",
+        "vessel_id": "MV-REPORT-01",
+        "departed_at": f"2026-03-0{n}T06:00:00+00:00",
+        "arrived_at": f"2026-03-0{n}T06:22:00+00:00",
+        "origin_name": "Iloilo City",
+        "destination_name": "Jordan, Guimaras",
+        "distance_nm": 2.8,
+        "fuel_used_l": fuel,
+        "baseline_fuel_l": baseline,
+        "baseline_method": "counterfactual_model" if baseline is not None else "none",
+    }
+
+
+def test_voyage_is_recorded_and_appears_in_the_report(client):
+    assert client.post("/voyages", json=_voyage(1, fuel=8.0, baseline=10.0)).status_code == 201
+
+    report = client.get(
+        "/emissions/report", params={"vessel_id": "MV-REPORT-01", "year": 2026, "month": 3}
+    ).json()
+    assert report["voyages"] >= 1
+    assert report["co2_kg"] > 0
+    assert report["co2_avoided_kg"] is not None
+    assert report["baseline_method"] == "counterfactual_model"
+    assert report["advisory_only"] is True
+    assert report["caveats"]
+
+
+def test_report_for_an_empty_month_is_not_an_error(client):
+    report = client.get(
+        "/emissions/report", params={"vessel_id": "MV-NOBODY-99", "year": 2026, "month": 3}
+    ).json()
+    assert report["voyages"] == 0
+    assert report["co2_avoided_kg"] is None
+
+
+def test_emissions_csv_export_is_downloadable(client):
+    client.post("/voyages", json=_voyage(2, fuel=9.0, baseline=11.0))
+    response = client.get(
+        "/emissions/report.csv",
+        params={"vessel_id": "MV-REPORT-01", "year": 2026, "month": 3},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+    assert ".csv" in response.headers["content-disposition"]
+
+    body = response.text
+    assert "Marine-AI monthly emissions report" in body
+    assert "api-v2" in body
+    # The export must explain itself when detached from the app.
+    assert "Not a certified emissions inventory" in body

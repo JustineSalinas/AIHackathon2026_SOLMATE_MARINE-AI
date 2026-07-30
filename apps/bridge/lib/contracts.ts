@@ -5,7 +5,7 @@
 //
 // The Python models in packages/contracts and apps/api are the single
 // source of truth. Change them and re-run; never hand-edit this file.
-// Generated from commit 504002e.
+// Generated from commit bad7765.
 
 export interface AnomalyStream {
   /** Field path, e.g. 'electro_mechanical.coolant_temp_c'. */
@@ -22,6 +22,8 @@ export interface AnomalyStream {
   /** How long this stream has been deviating. Drift reads differently from a spike. */
   trend_minutes?: number | null;
 }
+
+export type BaselineMethod = "own_prior_route" | "counterfactual_model" | "none";
 
 export type Connectivity = "online" | "degraded" | "offline";
 
@@ -53,6 +55,18 @@ export interface ElectroMechanicalFrame {
 export interface EmissionsOut {
   co2_kg_per_hour: number;
   co2_kg_per_nm?: number | null;
+}
+
+export interface EmissionsReportLine {
+  voyage_id: string;
+  departed_at: string;
+  route: string;
+  distance_nm: number;
+  fuel_used_l: number;
+  co2_kg: number;
+  baseline_fuel_l?: number | null;
+  co2_avoided_kg?: number | null;
+  baseline_method: BaselineMethod;
 }
 
 export type HullType = "fiberglass_monohull" | "fiberglass_outrigger" | "steel_monohull";
@@ -387,6 +401,51 @@ export interface MaintenanceRequest {
   frames: TelemetryFrame[];
   /** This vessel's run-hours, which set cold-start confidence. None uses the baseline's own history count. */
   observed_hours?: number | null;
+}
+
+export interface SafetyRequest {
+  vessel_id?: string | null;
+  frame: TelemetryFrame;
+}
+
+export interface VoyageRecord {
+  voyage_id: string;
+  vessel_id: string;
+  departed_at: string;
+  arrived_at: string;
+  origin_name?: string | null;
+  destination_name?: string | null;
+  distance_nm: number;
+  /** Actually burned, integrated from the fuel model. */
+  fuel_used_l: number;
+  /** What the same voyage would have burned without Marine-AI. None when no baseline could be established. */
+  baseline_fuel_l?: number | null;
+  baseline_method?: BaselineMethod | null;
+  passenger_count?: number | null;
+  cargo_kg?: number | null;
+  /** Provenance. 'simulator' for every record in the hackathon build -- no hardware was used. Never silently defaults to 'sensor'. */
+  source?: string | null;
+}
+
+export interface EmissionsReport {
+  vessel_id: string;
+  year: number;
+  month: number;
+  generated_at: string;
+  voyages: number;
+  distance_nm: number;
+  fuel_used_l: number;
+  co2_kg: number;
+  /** Against the stated baseline. May be NEGATIVE -- a month that burned more than baseline is a real month and is reported as such, never floored at zero. None when no voyage in the month had a baseline. */
+  co2_avoided_kg?: number | null;
+  voyages_with_baseline?: number | null;
+  baseline_method?: BaselineMethod | null;
+  /** Tank-to-wake combustion factor used. A constant of chemistry, not a tuned parameter. */
+  emission_factor_kg_per_l: number;
+  lines?: EmissionsReportLine[] | null;
+  caveats?: string[] | null;
+  /** Constant by design. This is an operational record, not a certified emissions inventory, and must not be presented as one. */
+  advisory_only?: boolean | null;
 }
 
 export interface BridgeState {

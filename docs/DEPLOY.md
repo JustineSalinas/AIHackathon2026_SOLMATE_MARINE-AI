@@ -97,6 +97,29 @@ Preview deployments get a new hostname on every push, so the API also accepts
 public, unauthenticated and read-only, so this concedes nothing that `/advise`
 does not already return to anyone who asks.
 
+### 4. The Claude advisory layer (optional, but wanted for the demo)
+
+Still on the API project:
+
+```
+ANTHROPIC_API_KEY = sk-ant-...
+```
+
+Unset, the system is fully functional but every advisory sentence ships as
+`advisory_source: "template"` — correct, not broken, but not what the deck
+promises. Set the key and redeploy the API project (env vars only apply to new
+deployments), then confirm with:
+
+```bash
+curl https://marine-ai-api.vercel.app/health
+# {"status":"ok","wear_model_loaded":true,"advisory_layer":"claude","advisory_only":true}
+```
+
+`ANTHROPIC_MODEL` (default `claude-opus-5`), `MARINE_AI_ADVISORY_TIMEOUT_S`,
+`MARINE_AI_ADVISORY_BLOCKING` and `MARINE_AI_ADVISORY_DISABLED` are optional
+overrides — see `.env.example`. Nothing here needs the bridge project touched;
+the display just renders whichever `advisory_source` the API sends.
+
 ---
 
 ## Why the API fits in a serverless function
@@ -106,7 +129,7 @@ Vercel's Python runtime allows 500 MB. Measured footprints:
 | Stack | Size |
 |---|---|
 | xgboost + scikit-learn + scipy + pandas | 358 MB |
-| onnxruntime + numpy | 64 MB |
+| onnxruntime + numpy | 85 MB |
 
 358 MB fits only barely, and that figure is from Windows wheels — the Linux
 `xgboost` wheel bundles `libxgboost.so` and runs larger. Rather than bet a

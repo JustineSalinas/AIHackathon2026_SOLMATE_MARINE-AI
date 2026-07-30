@@ -40,7 +40,11 @@ class AnomalyStream(BaseModel):
     label_en: str = Field(description="Plain language. 'Engine coolant temperature', not the path.")
     label_fil: str
 
-    reconstruction_error: float = Field(ge=0, description="Autoencoder error for this stream.")
+    reconstruction_error: float = Field(
+        ge=0,
+        description="PCA reconstruction residual for this stream -- a linear "
+        "autoencoder's error. See docs/DEVIATIONS.md for why PCA, not a deep net.",
+    )
     z_score: float = Field(description="Deviation from the learned baseline, in sigmas.")
     contribution_pct: float = Field(
         ge=0,
@@ -66,7 +70,8 @@ class MaintenanceStatus(BaseModel):
     anomaly_score: float = Field(
         ge=0,
         le=1,
-        description="0 nominal, 1 strongly anomalous. Autoencoder + IsolationForest ensemble.",
+        description="0 nominal, 1 strongly anomalous. Ensemble of a robust per-stream "
+        "z-score and a PCA reconstruction error; see docs/DEVIATIONS.md.",
     )
     is_anomalous: bool
     streams: list[AnomalyStream] = Field(

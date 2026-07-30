@@ -5,7 +5,7 @@
 # request, and the gap between them is the point:
 #
 #   xgboost + scikit-learn + scipy + pandas   358 MB   (training)
-#   onnxruntime + numpy                        64 MB   (serving)
+#   onnxruntime + numpy                        85 MB   (serving)
 #
 # Vercel's Python runtime allows 500 MB. The training stack fits only barely,
 # and Linux wheels run larger than the Windows measurement above -- xgboost
@@ -19,3 +19,11 @@ fastapi>=0.115
 pydantic>=2.9
 numpy>=1.26
 onnxruntime>=1.19
+
+# Natural-language advisory layer. Pure Python over httpx -- a few MB, not a
+# framework, and it does not move the 85 MB serving figure above in any way a
+# reader would notice. It is listed here rather than kept out of the serving
+# image because the sentence the captain reads is part of the product, and
+# because the layer is written to no-op without a key: no ANTHROPIC_API_KEY,
+# no import cost that matters, deterministic templates on the display.
+anthropic>=0.75

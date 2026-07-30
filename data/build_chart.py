@@ -34,7 +34,17 @@ OUTPUT = Path("apps/bridge/public/chart.json")
 BASEMAP = Path("apps/bridge/public/basemap.jpg")
 LANDMASK = Path("apps/bridge/public/landmask.png")
 
-BASEMAP_WIDTH = 1400
+BASEMAP_WIDTH = 2800
+"""Basemap resolution, matched to the source rather than guessed.
+
+Sentinel-2 is a 10 m/px sensor. This window is 0.26 deg of longitude at 10.7 N,
+which is 28.4 km, so 2800 px is 10.1 m/px -- native. The previous 1400 threw away
+half the detail the satellite actually resolves, and it showed: the chart looked
+acceptable fitted to the canvas and went soft the moment the follow camera zoomed
+in. Asking a WMS for more than 2800 would not buy anything; it would just
+upsample, which is why this is set to the sensor and not to the biggest number
+the server will accept."""
+
 MASK_WIDTH = 360
 """Mask resolution. The helm view ray-casts this to build its horizon, so it
 needs enough detail to resolve a headland and no more; at 360 px across a 28 km

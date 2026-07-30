@@ -15,6 +15,12 @@ Unit convention, applied without exception:
 """
 
 from packages.contracts.bridge import BridgeState, ModuleStatus
+from packages.contracts.emissions import (
+    BaselineMethod,
+    EmissionsReport,
+    EmissionsReportLine,
+    VoyageRecord,
+)
 from packages.contracts.maintenance import (
     AnomalyStream,
     MaintenancePhase,
@@ -34,8 +40,11 @@ from packages.contracts.telemetry import (
 
 __all__ = [
     "AnomalyStream",
+    "BaselineMethod",
     "BridgeState",
     "ElectroMechanicalFrame",
+    "EmissionsReport",
+    "EmissionsReportLine",
     "MaintenancePhase",
     "MaintenanceStatus",
     "ModuleStatus",
@@ -49,5 +58,6 @@ __all__ = [
     "TelemetryFrame",
     "ThrottlingFrame",
     "VesselProfile",
+    "VoyageRecord",
     "Waypoint",
 ]
