@@ -59,6 +59,48 @@ class AnomalyStream(BaseModel):
     )
 
 
+class DutyCycleSummary(BaseModel):
+    """How hard the engine was worked over the scored window.
+
+    The profile (§3.3) names this the "literal data link between Problem 1
+    (inefficiency) and Problem 2 (accelerated wear)": throttle badly and you do
+    not merely burn more fuel, you spend the engine faster. This is that link
+    reported as a number.
+
+    **This is the window, not the engine's life.** `/maintenance` is stateless and
+    is handed a minute or two of frames, so `running_hours` here is a fraction of
+    an hour and means only "the span these frames cover". The profile's
+    *cumulative* run-hours per band need an accumulator that outlives a request;
+    that is not built (see docs/DEVIATIONS.md). What survives the window honestly
+    is `severity_index`, which is normalised by running hours and so is a rate --
+    comparable between a two-minute window and a two-year history.
+
+    Nothing here is a Phase 2 claim. Exposure is arithmetic on telemetry the
+    vessel already sent; it names no component and predicts no failure.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    running_hours: float = Field(
+        ge=0,
+        description="Engine-running hours integrated in THIS window. Not a lifetime total.",
+    )
+    hours_by_band: dict[str, float] = Field(
+        description="Running hours per load band within this window, keyed by band name."
+    )
+    severity_index: float = Field(
+        ge=0,
+        description="Weighted wear-hours per running hour. 1.0 is a window spent at "
+        "cruise; above 1.0 is harder use. A rate, so it is window-length independent.",
+    )
+    weighted_hours: float = Field(
+        ge=0, description="Wear-equivalent hours for this window: running hours x band weight."
+    )
+    dominant_band: str = Field(description="Band with the most hours; ties break toward harder.")
+    dominant_label_en: str
+    dominant_label_fil: str
+
+
 class MaintenanceStatus(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -85,6 +127,12 @@ class MaintenanceStatus(BaseModel):
         ge=0,
         le=1,
         description="How well-established this vessel's normal is. Low early in Phase 1.",
+    )
+
+    duty: DutyCycleSummary | None = Field(
+        None,
+        description="Engine exposure over this window. None when the caller did not "
+        "supply a rated RPM, since load is meaningless without a rating to divide by.",
     )
 
     # --- Phase 2 only. Must be None in Phase 1; see the validator below. ---

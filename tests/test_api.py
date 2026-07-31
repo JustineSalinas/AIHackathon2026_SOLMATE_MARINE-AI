@@ -283,9 +283,9 @@ def test_route_bad_input_is_rejected_not_coerced(client):
 # --- Predictive Maintenance (Phase 1) ---------------------------------------
 
 
-def em_window(n=30, **channels) -> list[dict]:
+def em_window(n=30, rpm=None, **channels) -> list[dict]:
     """A window of telemetry frames at healthy operating values, moving any named
-    electro-mechanical channel."""
+    electro-mechanical channel. `rpm` adds a throttling block for the duty cycle."""
     healthy = {
         "coolant_temp_c": 82.0,
         "oil_pressure_kpa": 350.0,
@@ -308,18 +308,22 @@ def em_window(n=30, **channels) -> list[dict]:
             "accel_y_g": a * math.sin(i + 2.0),
             "accel_z_g": 1.0 + a * math.sin(i + 4.0),
         }
-        frames.append(
-            {
-                "vessel_id": "MV-DEMO-01",
-                "ts": f"2026-07-23T06:00:{i:02d}+00:00",
-                "electro_mechanical": em,
-            }
-        )
+        frame = {
+            "vessel_id": "MV-DEMO-01",
+            "ts": f"2026-07-23T06:00:{i:02d}+00:00",
+            "electro_mechanical": em,
+        }
+        if rpm is not None:
+            frame["throttling"] = {"engine_rpm": rpm}
+        frames.append(frame)
     return frames
 
 
-def maint(client, **channels) -> dict:
-    r = client.post("/maintenance", json={"frames": em_window(**channels)})
+def maint(client, *, rated_rpm=None, rpm=None, **channels) -> dict:
+    body: dict = {"frames": em_window(rpm=rpm, **channels)}
+    if rated_rpm is not None:
+        body["rated_rpm"] = rated_rpm
+    r = client.post("/maintenance", json=body)
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -344,6 +348,38 @@ def test_maintenance_flags_a_coolant_spike_and_stays_phase1(client):
 
 def test_maintenance_requires_at_least_one_frame(client):
     assert client.post("/maintenance", json={"frames": []}).status_code == 422
+
+
+def test_maintenance_omits_duty_without_a_rating(client):
+    """No rated RPM, no load fraction -- the section is absent, not guessed."""
+    assert maint(client, rpm=2750.0)["duty"] is None
+
+
+def test_maintenance_reports_duty_when_given_a_rating(client):
+    body = maint(client, rpm=2750.0, rated_rpm=2800.0)
+    duty = body["duty"]
+    assert duty is not None
+    assert duty["dominant_band"] == "overload"
+    assert duty["severity_index"] > 2.0
+    assert duty["running_hours"] > 0
+    # Still Phase 1: exposure is not a component-level claim.
+    assert body["phase"] == "phase_1_cold_start"
+    assert body["likely_component"] is None
+    assert body["remaining_useful_life_days"] is None
+
+
+def test_maintenance_duty_does_not_raise_the_anomaly_score(client):
+    """The same healthy window scores identically thrashed or not."""
+    hard = maint(client, rpm=2750.0, rated_rpm=2800.0)
+    cruise = maint(client, rpm=1680.0, rated_rpm=2800.0)
+    assert hard["duty"]["severity_index"] > cruise["duty"]["severity_index"]
+    assert hard["anomaly_score"] == cruise["anomaly_score"]
+    assert hard["is_anomalous"] is False and cruise["is_anomalous"] is False
+
+
+def test_maintenance_rejects_a_non_positive_rating(client):
+    r = client.post("/maintenance", json={"frames": em_window(rpm=1680.0), "rated_rpm": 0})
+    assert r.status_code == 422
 
 
 # --- POST /safety -----------------------------------------------------------

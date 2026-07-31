@@ -166,6 +166,13 @@ class MaintenanceRequest(BaseModel):
         description="This vessel's run-hours, which set cold-start confidence. "
         "None uses the baseline's own history count.",
     )
+    rated_rpm: float | None = Field(
+        None,
+        gt=0,
+        description="Engine rated RPM, which turns the frames' RPM and torque into "
+        "a load fraction and so enables the duty-cycle summary. None omits that "
+        "section rather than assuming a rating.",
+    )
 
 
 class SafetyRequest(BaseModel):

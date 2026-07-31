@@ -339,6 +339,10 @@ async def maintenance(req: MaintenanceRequest) -> MaintenanceStatus:
     contract's own validator the returned status cannot name a component or a
     repair date -- a cold-start unit may say which sensor stream is deviating, and
     no more. That fairness commitment is enforced here, not merely intended.
+
+    When `rated_rpm` is supplied the response also carries a duty-cycle summary:
+    how hard this window worked the engine. That is exposure, not diagnosis, and
+    it does not feed the anomaly score.
     """
     baseline = _state.get("maintenance_baseline")
     return await _phrased(
@@ -347,6 +351,7 @@ async def maintenance(req: MaintenanceRequest) -> MaintenanceStatus:
             baseline,
             vessel_id=req.vessel_id,
             observed_hours=req.observed_hours,
+            rated_rpm=req.rated_rpm,
         ),
         kind="engine health",
     )

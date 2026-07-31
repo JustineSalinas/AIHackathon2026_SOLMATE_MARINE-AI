@@ -363,6 +363,25 @@ above.
 | C | MPC loop re-solves the route continuously | Brute-force candidate sweep, re-planned on event | **Not built** |
 | F | MQTT telemetry transport | HTTP/JSON | **Not built** |
 | G | Phase 1 detector pretrained on NASA C-MAPSS | Dataset downloaded and registered; the detector fits a per-vessel baseline instead | **Not built** |
+| H | §3.3's derived features: *cumulative* run-hours per load band, and a duty-cycle severity index | Both computed and served on `/maintenance`, but over the **scored window** only. The severity index is a rate and survives that honestly; cumulative lifetime hours do not | **Partly built** (2026-07-31) |
+| I | Phase 1 detector fits each vessel's own baseline from its healthy history | `VesselBaseline.fit()` exists and is tested, but the API serves `synthetic_healthy_baseline()` at startup. No path yet from stored telemetry to a fitted per-vessel baseline | **Not built** |
+
+On **H**: the two features are wired in as of 2026-07-31 — before that they were
+implemented and unit-tested but imported by nothing, which is worth admitting
+because "the code exists" and "the system uses it" are different claims. What is
+served is the duty cycle of the window `/maintenance` was handed, a minute or two
+of frames. `severity_index` is normalised by running hours, so it is a rate and
+means the same thing over two minutes as over two years; `running_hours` and
+`hours_by_band` are genuinely just that window and are labelled as such in the
+contract. True cumulative exposure needs an accumulator that outlives a stateless
+request — the voyage store is the obvious home — and that is not built. The
+display shows only the band and the rate, so no lifetime number is implied to a
+captain.
+
+Exposure deliberately does **not** feed the anomaly score, and
+`test_duty_never_moves_the_anomaly_score` pins that. Working an engine hard is
+not a fault; if it raised the score, every busy crossing would light the health
+strip and the crew would learn to ignore it.
 
 On **G** specifically: row 3 of the deviations table above says "Dropped; NASA
 C-MAPSS only", which reads as though C-MAPSS pretrains the detector. It does not.

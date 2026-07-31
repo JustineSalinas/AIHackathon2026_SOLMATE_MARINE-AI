@@ -64,6 +64,34 @@ diesel glazes bores and wets-stacks the exhaust; it is gentler than cruise, not
 harmless, and a weight of zero would let a boat idle all day and report a
 perfectly healthy duty cycle."""
 
+BAND_LABELS: dict[str, tuple[str, str]] = {
+    "idle": ("idle", "walang karga"),
+    "light": ("light load", "magaang karga"),
+    "cruise": ("cruise", "katamtamang karga"),
+    "heavy": ("heavy load", "mabigat na karga"),
+    "overload": ("overload", "sobrang karga"),
+}
+"""(English, Filipino) words an operator would use for each band. They live here
+next to the bands themselves so a per-vessel band table cannot drift from the
+words the display puts on it.
+
+Every label is a **noun phrase**, and that is a constraint rather than a style
+note. Each one is dropped into a sentence frame in `detector._duty_clause` -- and
+into a bare value slot on the bridge's health panel -- so a label written as a
+clause breaks the grammar of the sentence around it. The first draft used
+"mabigat ang karga", which is a complete clause, and rendered as "Halos puro
+mabigat ang karga ang takbo": two subject markers, one sentence. Keep the
+"<adjective> karga" shape."""
+
+SEVERITY_ADVISORY_THRESHOLD = 1.3
+"""Severity index above which the advisory mentions duty at all.
+
+Deliberately well clear of 1.0. The index is a *rate* normalised by running
+hours, so a boat working a normal day sits near cruise and must not be told
+anything -- an exposure note that fires on ordinary operation is noise, and the
+crew stops reading the line that also has to carry real anomalies. 1.3 is roughly
+a window spent between heavy and overload."""
+
 
 @dataclass
 class DutyCycle:
@@ -94,6 +122,23 @@ class DutyCycle:
             hours * SEVERITY_WEIGHTS[band] for band, hours in self.hours_by_band.items()
         )
         return round(weighted / self.total_hours, 4)
+
+    @property
+    def dominant_band(self) -> str:
+        """The band this engine spent the most time in, and so the one word worth
+        putting on a display.
+
+        Ties break toward the *harder* band: `LOAD_BANDS` runs gentle to hard and
+        a strict `>` keeps the first maximum, so the comparison is reversed here.
+        A window split evenly between cruise and overload is an overload window
+        for the purpose of warning someone about it.
+        """
+        if self.total_hours <= 0:
+            return LOAD_BANDS[0][0]
+        return max(
+            (name for name, _, _ in LOAD_BANDS),
+            key=lambda name: (self.hours_by_band[name], SEVERITY_WEIGHTS[name]),
+        )
 
     @property
     def weighted_hours(self) -> float:

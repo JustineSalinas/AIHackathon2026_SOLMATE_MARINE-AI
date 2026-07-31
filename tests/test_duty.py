@@ -17,6 +17,7 @@ import pytest
 
 from packages.contracts.telemetry import TelemetryFrame, ThrottlingFrame
 from services.maintenance.duty import (
+    BAND_LABELS,
     LOAD_BANDS,
     SEVERITY_WEIGHTS,
     DutyCycle,
@@ -163,3 +164,52 @@ def test_a_backwards_clock_is_dropped():
 def test_negative_interval_is_rejected():
     with pytest.raises(ValueError):
         DutyCycle().accumulate(0.5, -1.0)
+
+
+# --- Dominant band ----------------------------------------------------------
+
+
+def test_dominant_band_is_where_the_engine_spent_its_time():
+    cycle = duty_cycle(frames(1680.0, 3601), rated_rpm=RATED)
+    assert cycle.dominant_band == "cruise"
+
+
+def test_dominant_band_breaks_ties_toward_the_harder_band():
+    """An evenly split window is the harder band for the purpose of warning.
+
+    Half a window at cruise and half at overload is not a cruise window, and a
+    tie broken the gentle way would under-report exactly the case worth saying
+    something about.
+    """
+    cycle = DutyCycle()
+    cycle.accumulate(0.60, 1800.0)  # cruise
+    cycle.accumulate(0.98, 1800.0)  # overload, same duration
+    assert cycle.hours_by_band["cruise"] == cycle.hours_by_band["overload"]
+    assert cycle.dominant_band == "overload"
+
+
+def test_dominant_band_of_an_empty_cycle_is_the_gentlest():
+    """Nothing recorded is not an overload claim."""
+    assert DutyCycle().dominant_band == LOAD_BANDS[0][0]
+
+
+def test_band_labels_are_noun_phrases_not_clauses():
+    """Labels are substituted into a sentence frame, so a clause breaks grammar.
+
+    "mabigat ang karga" is a sentence on its own, and dropping it into "Halos puro
+    ___ ang takbo" yields "Halos puro mabigat ang karga ang takbo" -- two subject
+    markers in one sentence. Caught by reading real API output; pinned here
+    because no type or length check can see it.
+    """
+    for name, (_, fil) in BAND_LABELS.items():
+        assert " ang " not in f" {fil} ", f"{name!r} label {fil!r} is a clause, not a phrase"
+
+
+def test_every_band_has_a_label_and_a_weight():
+    """A band without a label would render as a blank on the display, and one
+    without a weight would raise on the severity sum."""
+    for name, _, _ in LOAD_BANDS:
+        assert name in BAND_LABELS
+        assert name in SEVERITY_WEIGHTS
+        en, fil = BAND_LABELS[name]
+        assert en and fil and en != fil
