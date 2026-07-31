@@ -53,6 +53,19 @@ class RouteRecommendation(BaseModel):
     waypoints: list[Waypoint] = Field(min_length=2)
     total_distance_nm: float = Field(ge=0)
     eta: datetime
+    achievable_minutes: float | None = Field(
+        None,
+        ge=0,
+        description=(
+            "Crossing time the hull can actually achieve, summed from each leg's "
+            "optimised speed. Always populated where a speed was found. When a "
+            "schedule was requested, `eta` is the arrival that was ASKED FOR -- legs "
+            "are planned at the required speed-over-ground -- so where "
+            "schedule_feasible is False the two differ and THIS is the honest one. "
+            "None only when some leg admits no forward speed at all, where a "
+            "crossing time does not exist rather than being very large."
+        ),
+    )
     predicted_burn_l: float = Field(ge=0, description="Whole-route burn, same fuel model as Speed.")
 
     # The delta against the obvious alternative

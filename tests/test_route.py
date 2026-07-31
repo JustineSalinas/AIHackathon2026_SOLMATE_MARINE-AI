@@ -277,3 +277,81 @@ def test_load_forecast_loads_the_trained_artifact_when_present():
         assert sea.wave_height_m >= 0.0
         assert sea.current_speed_kn >= 0.0
         assert 0.0 <= sea.wind_direction_deg < 360.0
+
+
+def test_achievable_minutes_exceeds_the_schedule_when_it_cannot_be_held(fuel_map):
+    """An impossible schedule must publish how long the crossing really takes.
+
+    `eta` is the arrival that was *asked for*: legs are planned at the required
+    speed-over-ground, so summing `planned_minutes` reproduces the budget exactly
+    whether or not the hull can hold it. That made `schedule_feasible=False` a
+    boolean with no magnitude attached, and the display could only say "cannot be
+    held" without saying by how much.
+
+    This pins the two apart: ask for a crossing far faster than the hull can
+    manage, and `achievable_minutes` must exceed the budget while `eta` still
+    lands on it.
+    """
+    sea = SeaState(wind_speed_kn=14.0, wind_direction_deg=90.0, wave_height_m=0.8)
+    origin = LatLon(10.6, 123.0)
+    dest = LatLon(10.6, 123.5)  # due east, ~29.5 nm
+    impossible = 30.0  # ~59 kn required; this hull cannot do it
+
+    plan = plan_route(
+        origin,
+        dest,
+        hull=HULL,
+        spec=SPEC,
+        fuel_map=fuel_map,
+        forecast=ConstantForecast(sea),
+        bathymetry=AnalyticBathymetry(offshore_depth_m=80.0, coast_lat=0.0),
+        depart=DEPART,
+        minutes_available=impossible,
+        offsets_nm=(0.0,),
+    )
+
+    assert not plan.chosen.schedule_feasible
+    # The planned total is the budget; the achievable total is the truth.
+    assert plan.chosen.total_minutes == pytest.approx(impossible, rel=1e-6)
+    assert plan.chosen.total_achievable_minutes > impossible
+
+    rec = as_route_recommendation(plan, vessel_id="MV-TEST", depart=DEPART)
+    assert rec.achievable_minutes is not None
+    assert rec.achievable_minutes > impossible
+    # `eta` still reports the requested arrival, so the two must not be equal.
+    eta_minutes = (rec.eta - DEPART).total_seconds() / 60.0
+    assert eta_minutes == pytest.approx(impossible, rel=1e-6)
+    assert rec.achievable_minutes > eta_minutes
+
+
+def test_achievable_minutes_is_within_the_budget_when_the_schedule_is_comfortable(fuel_map):
+    """The other side: a schedule the hull can hold is reported as held.
+
+    Guards against "fixing" the field by always reporting something larger than
+    the budget. Note the achievable time comes in *under* it rather than equal to
+    it, and that is the optimizer working as designed: given a generous budget it
+    picks the cheapest throttle that MEETS the schedule, and the cheapest such
+    throttle usually beats it slightly. So this asserts a bound, not an equality
+    -- an earlier version of this test asserted equality and failed at 590
+    against 600, which was the test being wrong rather than the planner.
+    """
+    sea = SeaState(wind_speed_kn=6.0, wind_direction_deg=90.0, wave_height_m=0.3)
+    plan = plan_route(
+        LatLon(10.6, 123.0),
+        LatLon(10.6, 123.5),
+        hull=HULL,
+        spec=SPEC,
+        fuel_map=fuel_map,
+        forecast=ConstantForecast(sea),
+        bathymetry=AnalyticBathymetry(offshore_depth_m=80.0, coast_lat=0.0),
+        depart=DEPART,
+        minutes_available=600.0,  # ~3 kn required; trivially holdable
+        offsets_nm=(0.0,),
+    )
+
+    assert plan.chosen.schedule_feasible
+    rec = as_route_recommendation(plan, vessel_id="MV-TEST", depart=DEPART)
+    assert rec.achievable_minutes is not None
+    # Feasible means exactly this: the crossing fits inside the budget.
+    assert rec.achievable_minutes <= plan.chosen.total_minutes + 1e-6
+    assert rec.achievable_minutes > 0.0

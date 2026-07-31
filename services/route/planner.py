@@ -22,6 +22,7 @@ and the sea state.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -77,6 +78,11 @@ class LegCost:
     confidence: float
     min_depth_m: float
     planned_minutes: float
+    #: Minutes this leg actually takes at `speed_kn`. Equal to `planned_minutes`
+    #: when the schedule is holdable and larger when it is not -- which is the
+    #: whole difference the display needs, and which used to be computed here and
+    #: dropped on the floor. `inf` where the hull makes no way at all.
+    achievable_minutes: float
 
 
 @dataclass(frozen=True)
@@ -90,6 +96,8 @@ class CostedRoute:
     total_distance_nm: float
     total_burn_l: float
     total_minutes: float
+    #: Sum of the legs' achievable minutes. `inf` if any leg makes no way.
+    total_achievable_minutes: float
     min_depth_m: float
     max_wave_m: float
     depth_feasible: bool
@@ -198,12 +206,14 @@ def _cost_track(
                 litres=litres,
                 confidence=opt.burn.confidence,
                 min_depth_m=depth,
+                achievable_minutes=actual_minutes,
                 planned_minutes=leg_minutes if leg_minutes is not None else actual_minutes,
             )
         )
 
     total_burn = sum(leg.litres for leg in legs)
     total_minutes = sum(leg.planned_minutes for leg in legs)
+    total_achievable = sum(leg.achievable_minutes for leg in legs)
     min_depth = min((leg.min_depth_m for leg in legs), default=keel_clearance)
     max_wave = max((leg.sea.wave_height_m for leg in legs), default=0.0)
     confidence = (
@@ -216,6 +226,7 @@ def _cost_track(
         total_distance_nm=total_distance,
         total_burn_l=total_burn,
         total_minutes=total_minutes,
+        total_achievable_minutes=total_achievable,
         min_depth_m=min_depth,
         max_wave_m=max_wave,
         depth_feasible=min_depth >= keel_clearance,
@@ -433,6 +444,12 @@ def as_route_recommendation(
     eta = waypoints[-1].eta or depart
     en, fil = route_advisory_sentences(plan)
 
+    # `inf` is not representable in JSON, and a leg that admits no forward speed
+    # has no crossing time rather than a very large one. Say None and let the
+    # display say so in words.
+    achievable = plan.chosen.total_achievable_minutes
+    achievable_minutes = achievable if math.isfinite(achievable) else None
+
     return RouteRecommendation(
         vessel_id=vessel_id,
         voyage_id=voyage_id,
@@ -440,6 +457,7 @@ def as_route_recommendation(
         waypoints=waypoints,
         total_distance_nm=plan.chosen.total_distance_nm,
         eta=eta,
+        achievable_minutes=achievable_minutes,
         predicted_burn_l=plan.chosen.total_burn_l,
         baseline_distance_nm=plan.baseline.total_distance_nm,
         baseline_burn_l=plan.baseline.total_burn_l,
