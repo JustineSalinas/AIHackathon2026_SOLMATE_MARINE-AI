@@ -98,6 +98,11 @@ export interface FrameInputs {
    *  trend window reads in the minutes a captain means, not wall-clock. */
   atMs: number;
   throttlePct: number;
+  /** Shaft RPM for this frame. Passed in rather than derived from `throttlePct`
+   *  here, because `currentRpm` in lib/simulation.ts already owns that relation
+   *  against the vessel spec — recomputing it would be a second definition of
+   *  the same number, which is the exact hazard the constants above carry. */
+  engineRpm: number;
   /** The engine-wear slider. 1.0 as-new; raises EGT alone, off-manifold. */
   egtExcess: number;
   engineHours: number;
@@ -149,6 +154,15 @@ export function emulateFrame(inputs: FrameInputs): TelemetryFrame {
     vessel_id: inputs.vesselId,
     ts: new Date(inputs.atMs).toISOString(),
     source: "simulator",
+    // Load channels. The health detector ignores these -- it reads only
+    // `electro_mechanical` -- but the duty-cycle summary is computed from them,
+    // and torque is deliberately absent: this simulator has no torque model, and
+    // inventing one would put a fabricated number into a wear figure. Without it
+    // `load_fraction` falls back to RPM over rating, which is what we actually know.
+    throttling: {
+      engine_rpm: inputs.engineRpm,
+      throttle_position_pct: inputs.throttlePct,
+    },
     electro_mechanical: {
       coolant_temp_c: value("coolantC", z("coolantC", "coolant")),
       oil_pressure_kpa: value("oilPressureKpa", z("oilPressureKpa", "oil_pressure", -1)),

@@ -19,13 +19,31 @@ import type {
 } from "./contracts";
 import { speedForRpm } from "./api";
 import { type FaultState, emulateFrame } from "./telemetry";
-import type { EnvironmentInputs, Hazard } from "./environment";
+import type { EnvironmentInputs, ForecastMeta, Hazard } from "./environment";
 import { WEATHER, conditionsAt } from "./environment";
-import { type Vec, angleDelta, clamp } from "./nautical";
+import { DEFAULT_VESSEL, type VesselSpec } from "./vessel";
+import { type Vec, angleDelta, clamp, normaliseDeg } from "./nautical";
 import { baselineTrack, pathLength, pointAlong, shapeRoute } from "./router";
 import type { ChartView } from "./render-chart";
 
-export type PovMode = ChartView | "helm";
+/** The chart views, plus the two exterior cameras. `helm` looks forward from
+ *  behind the wheel; `chase` looks forward from astern with the vessel in
+ *  frame. Both draw the same seascape -- see lib/render-helm.ts `drawSeascape`. */
+export type PovMode = ChartView | "helm" | "chase";
+
+/**
+ * Is this view a chart, rather than a camera looking out at the sea?
+ *
+ * Chart chrome -- the tool rail, the compass, the click-to-place hit testing --
+ * only means anything over a chart. This is a function rather than a comparison
+ * at each call site because it was previously written as `pov !== "helm"` in two
+ * places, and adding the chase camera silently made both of them wrong: the rail
+ * and the compass would have drawn themselves over open water. A predicate has
+ * one place to update, and the next camera added cannot miss one.
+ */
+export function isChartView(pov: PovMode): pov is ChartView {
+  return pov !== "helm" && pov !== "chase";
+}
 
 export interface ChartData {
   bounds: { min_lat: number; max_lat: number; min_lon: number; max_lon: number };
@@ -140,7 +158,10 @@ export interface SimState {
   };
 
   throttlePct: number;
-  ratedRpm: number;
+  /** What the boat *is*, as against `vessel` above, which is where it is and
+   *  how fast. One copy, read by every request that needs it -- see
+   *  lib/vessel.ts for why this must not be inlined per call site. */
+  vesselSpec: VesselSpec;
   /** Demo time compression. 1 is real time. Always shown on screen: a crossing
    *  that takes 17 minutes in reality must not silently appear to take one. */
   timeScale: number;
@@ -155,6 +176,45 @@ export interface SimState {
 
   env: EnvironmentInputs;
   liveForecast: boolean;
+
+  /** Synthetic weather movement, for demonstrating without a network.
+   *
+   *  The reference simulator has this and it is genuinely worth having: with
+   *  every slider frozen, a paused-looking sea makes the advisory look frozen
+   *  too, and the thing worth showing is precisely that the recommendation
+   *  tracks the conditions. Its version is a bare random walk on every variable
+   *  at once, which wanders to the ends of its clamps and sits there.
+   *
+   *  Two rules make this honest rather than decorative. It reverts toward
+   *  `anchor` -- the operator's own slider positions -- so it reads as weather
+   *  breathing around a set point rather than as data. And it is mutually
+   *  exclusive with `liveForecast`: inventing movement in between real
+   *  Open-Meteo pulls would dress synthetic numbers in a live badge, which is
+   *  the one thing the forecast block on the control panel exists to prevent. */
+  drift: {
+    enabled: boolean;
+    /** What the walk reverts toward. Kept in step with the sliders by `setEnv`. */
+    anchor: EnvironmentInputs;
+    /** Simulated epoch ms at which the next step is due. */
+    nextAtMs: number;
+  };
+
+  // Provenance for the environment values above. Kept beside them rather than
+  // inside them because it answers a different question: `env` is what the
+  // conditions are, this is why anyone should believe it. The panel renders the
+  // two together so a live figure can never be mistaken for a typed one.
+  forecast: {
+    meta: ForecastMeta | null;
+    error: string | null;
+    /** True while a pull is in flight, so a manual sync reads as busy rather
+     *  than as having silently done nothing. */
+    syncing: boolean;
+    /** Seconds since the values arrived. Advanced in `step` alongside the other
+     *  freshness clocks rather than read off the wall clock in render -- a
+     *  component that calls Date.now() while rendering is impure, and React 19
+     *  is right to reject it. */
+    ageSeconds: number;
+  };
 
   obstacles: Hazard[];
   storms: Hazard[];
@@ -272,7 +332,7 @@ export function createState(chart: ChartData | null): SimState {
     vessel: { progress: 0, position: { x: 0, y: 0 }, headingRad: 0, speedKn: 0 },
 
     throttlePct: 70,
-    ratedRpm: 2800,
+    vesselSpec: { ...DEFAULT_VESSEL },
     timeScale: 20,
     passengers: 40,
     cargoKg: 1500,
@@ -286,6 +346,8 @@ export function createState(chart: ChartData | null): SimState {
 
     env: { ...DEFAULT_ENV },
     liveForecast: false,
+    forecast: { meta: null, error: null, syncing: false, ageSeconds: 0 },
+    drift: { enabled: false, anchor: { ...DEFAULT_ENV }, nextAtMs: 0 },
 
     obstacles: [],
     storms: [],
@@ -320,6 +382,93 @@ export function addLog(state: SimState, message: string, kind: LogEntry["kind"] 
     kind,
   });
   if (state.log.length > 60) state.log.length = 60;
+}
+
+/**
+ * Set a base environment value, and keep the drift anchor with it.
+ *
+ * Every environment slider goes through here rather than assigning `state.env`
+ * directly. Without it the anchor is a second copy of the same numbers that
+ * someone has to remember to update, and the failure is quiet and confusing:
+ * move the wind slider with drift running and the walk hauls it back toward
+ * wherever the slider used to be, so the control appears to fight the operator.
+ */
+export function setEnv<K extends keyof EnvironmentInputs>(
+  state: SimState,
+  key: K,
+  value: EnvironmentInputs[K],
+): void {
+  state.env[key] = value;
+  state.drift.anchor[key] = value;
+}
+
+/** Bounds the walk respects, matching the control panel's own slider ranges so
+ *  a drifting value can never leave the range the operator can set by hand. */
+const DRIFT_LIMITS: Record<string, [number, number]> = {
+  windSpeedKn: [0, 50],
+  waveHeightM: [0, 4],
+  currentSpeedKn: [0, 5],
+};
+
+/** Simulated seconds between steps. The reference simulator uses three, and
+ *  three is right -- it is slow enough to read a number before it changes. */
+const DRIFT_INTERVAL_MS = 3000;
+/** Fraction of the gap to the anchor closed per step. */
+const DRIFT_REVERSION = 0.25;
+
+/**
+ * One mean-reverting step on the environment magnitudes and bearings.
+ *
+ * Ornstein-Uhlenbeck in shape: pull toward the anchor, then add a bounded
+ * random kick. Speeds and heights get an absolute kick; bearings walk around the
+ * compass and are held within a sector of the anchor so the sea does not box
+ * the compass while a crossing is under way.
+ */
+function stepDrift(state: SimState): void {
+  if (!state.drift.enabled || state.liveForecast) return;
+  if (state.drift.nextAtMs === 0) state.drift.nextAtMs = state.simClockMs;
+  if (state.simClockMs < state.drift.nextAtMs) return;
+
+  // Catch up without replaying a backgrounded tab's worth of steps.
+  state.drift.nextAtMs = Math.max(
+    state.simClockMs - DRIFT_INTERVAL_MS,
+    state.drift.nextAtMs + DRIFT_INTERVAL_MS,
+  );
+
+  const { anchor } = state.drift;
+  const walk = (value: number, target: number, kick: number, key: string): number => {
+    const [lo, hi] = DRIFT_LIMITS[key];
+    const next = value + (target - value) * DRIFT_REVERSION + (Math.random() * 2 - 1) * kick;
+    return clamp(next, lo, hi);
+  };
+
+  state.env.windSpeedKn = walk(state.env.windSpeedKn, anchor.windSpeedKn, 1.6, "windSpeedKn");
+  state.env.waveHeightM = walk(state.env.waveHeightM, anchor.waveHeightM, 0.18, "waveHeightM");
+  state.env.currentSpeedKn = walk(
+    state.env.currentSpeedKn,
+    anchor.currentSpeedKn,
+    0.15,
+    "currentSpeedKn",
+  );
+
+  // Bearings: reverting across the 0/360 seam has to use the shortest way round,
+  // or a wind anchored at 010 with the value at 350 gets dragged the long way
+  // through south instead of twenty degrees through north.
+  const walkBearing = (value: number, target: number, kick: number, spread: number): number => {
+    const toAnchor = ((target - value + 540) % 360) - 180;
+    const stepped = value + toAnchor * DRIFT_REVERSION + (Math.random() * 2 - 1) * kick;
+    const excursion = clamp(((stepped - target + 540) % 360) - 180, -spread, spread);
+    return normaliseDeg(target + excursion);
+  };
+
+  state.env.windDirectionDeg = walkBearing(state.env.windDirectionDeg, anchor.windDirectionDeg, 6, 35);
+  state.env.waveDirectionDeg = walkBearing(state.env.waveDirectionDeg, anchor.waveDirectionDeg, 4, 25);
+  state.env.currentDirectionDeg = walkBearing(
+    state.env.currentDirectionDeg,
+    anchor.currentDirectionDeg,
+    3,
+    20,
+  );
 }
 
 export function startPort(state: SimState): Port {
@@ -392,7 +541,7 @@ export function headingDeg(state: SimState): number {
 }
 
 export function currentRpm(state: SimState): number {
-  return (state.throttlePct / 100) * state.ratedRpm;
+  return (state.throttlePct / 100) * state.vesselSpec.ratedRpm;
 }
 
 /** Distance still to run, in nautical miles. */
@@ -420,6 +569,7 @@ export function step(state: SimState, realDt: number): void {
   const dt = realDt * state.timeScale;
   state.timeSeconds += realDt;
   state.simClockMs += dt * 1000;
+  stepDrift(state);
   stepParticles(state, realDt);
   stepTelemetry(state);
 
@@ -435,6 +585,12 @@ export function step(state: SimState, realDt: number): void {
   }
   if (state.safety.lastRequestAt) {
     state.safety.ageSeconds = (now - state.safety.lastRequestAt) / 1000;
+  }
+  // The forecast's clock is the wall clock, not performance.now(): its timestamp
+  // comes from a remote observation, and the age that matters is how old the
+  // weather is, not how long this tab has been open.
+  if (state.forecast.meta) {
+    state.forecast.ageSeconds = (Date.now() - state.forecast.meta.fetchedAtMs) / 1000;
   }
 
   const curve = state.api.response?.curve ?? null;
@@ -500,9 +656,10 @@ function stepTelemetry(state: SimState): void {
   for (let emitted = 0; emitted < 8 && state.health.nextFrameAtMs <= state.simClockMs; emitted++) {
     frames.push(
       emulateFrame({
-        vesselId: "MV-SOLMATE-01",
+        vesselId: state.vesselSpec.vesselId,
         atMs: state.health.nextFrameAtMs,
         throttlePct: state.throttlePct,
+        engineRpm: currentRpm(state),
         egtExcess: state.egtExcess,
         engineHours: state.engineHours,
         fault: state.fault,

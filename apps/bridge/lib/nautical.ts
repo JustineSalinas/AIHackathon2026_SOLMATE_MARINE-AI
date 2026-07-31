@@ -59,12 +59,58 @@ export function relativeAngle(headingDeg: number, targetDeg: number): number {
   return d;
 }
 
-export function bearingDescription(relativeDeg: number): string {
+/**
+ * The sector a relative bearing falls in, named the way a crew names it.
+ *
+ * The reference simulator buckets the full circle into four 90-degree wedges, so
+ * a sea 40 degrees off the bow and a sea dead ahead both read "Head Sea". Those
+ * are not the same sea: the first rolls the boat and the second slams it, and
+ * the added resistance they cost differs by more than the label admits. These
+ * are the conventional sectors instead -- ahead and astern are narrow, because
+ * "right ahead" means right ahead -- so the words track the physics rather than
+ * flattening it.
+ *
+ * `side` is null only where the sector has no side to have: nothing is to port
+ * or starboard of the bow itself.
+ */
+export interface BearingSector {
+  /** Sector alone: "head", "bow", "beam", "quarter", "following". */
+  sector: "head" | "bow" | "beam" | "quarter" | "following";
+  side: "port" | "starboard" | null;
+  /** Ready to print: "port bow", "head", "starboard quarter". */
+  label: string;
+  /** True where waves meet the hull close to end-on and drive the added
+   *  resistance term hardest. Used to tone the readout, never to compute a
+   *  number -- the resistance itself comes from the API. */
+  headOn: boolean;
+}
+
+export function bearingSector(relativeDeg: number): BearingSector {
   const a = normaliseDeg(relativeDeg);
-  if (a >= 315 || a < 45) return "head";
-  if (a < 135) return "starboard beam";
-  if (a < 225) return "following";
-  return "port beam";
+  // Fold to 0-180 and remember which side it came from. 0 is the bow, 180 the
+  // stern, and the sectors are symmetric about the centreline.
+  const off = a > 180 ? 360 - a : a;
+  const side: "port" | "starboard" | null =
+    off < 10 || off > 170 ? null : a > 180 ? "port" : "starboard";
+
+  let sector: BearingSector["sector"];
+  if (off < 10) sector = "head";
+  else if (off < 80) sector = "bow";
+  else if (off < 100) sector = "beam";
+  else if (off < 170) sector = "quarter";
+  else sector = "following";
+
+  return {
+    sector,
+    side,
+    label: side ? `${side} ${sector}` : sector,
+    headOn: off < 45,
+  };
+}
+
+/** Sector name alone, for places with no room for the side. */
+export function bearingDescription(relativeDeg: number): string {
+  return bearingSector(relativeDeg).label;
 }
 
 /**

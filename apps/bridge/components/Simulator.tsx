@@ -30,9 +30,12 @@ import type {
   VoyageRecord,
 } from "@/lib/contracts";
 import { fetchOpenMeteo } from "@/lib/environment";
+import type { LocalConditions } from "@/lib/environment";
+import { toVesselInput, type VesselSpec } from "@/lib/vessel";
 import { relativeBearing } from "@/lib/nautical";
 import { drawChart } from "@/lib/render-chart";
 import { HELM_FOV_DEG, drawHelm, vesselMotion } from "@/lib/render-helm";
+import { drawChase } from "@/lib/render-chase";
 import { type LandMask, horizonProfile, loadLandMask } from "@/lib/landmask";
 import { WEATHER } from "@/lib/environment";
 import {
@@ -45,6 +48,7 @@ import {
   distanceRemainingNm,
   endPort,
   headingDeg as vesselHeadingDeg,
+  isChartView,
   localConditions,
   placeVesselAtStart,
   rebuildRoute,
@@ -54,6 +58,7 @@ import {
 } from "@/lib/simulation";
 import ControlPanel from "./ControlPanel";
 import TelemetryPanel from "./TelemetryPanel";
+import { CompassRose, TOOLS, ToolRail, type Tool } from "./MapOverlay";
 
 const ADVISE_INTERVAL_MS = 1000;
 const SNAPSHOT_INTERVAL_MS = 200;
@@ -79,6 +84,9 @@ export interface Snapshot {
   progress: number;
   zone: string;
   diverted: boolean;
+  /** The ETA budget the operator set, minutes. The Route zone needs it to say
+   *  how far past the schedule an infeasible plan actually lands. */
+  scheduleMinutes: number;
   relativeWindDeg: number;
   relativeWaveDeg: number;
   rollDeg: number;
@@ -86,16 +94,28 @@ export interface Snapshot {
   fuelUsedL: number;
   advisedFuelL: number;
   elapsedSeconds: number;
+  /** Conditions at the vessel, not the base slider values. The panels that read
+   *  this are reporting what the boat is actually in. */
+  conditions: LocalConditions;
+  /** The hull under advice, so panels can express figures per rating rather
+   *  than against a constant they would have to hold their own copy of. */
+  vessel: VesselSpec;
   api: SimState["api"];
   routePlan: SimState["routePlan"];
   health: Omit<SimState["health"], "frames"> & { frameCount: number };
   safety: SimState["safety"];
+  forecast: SimState["forecast"];
   log: SimState["log"];
   liveForecast: boolean;
   timeScale: number;
 }
 
-type Tool = "pointer" | "obstacle" | "storm";
+/** Demo speeds, as steps rather than a continuous slider.
+ *
+ *  Time compression is the one control that gets touched mid-sentence while
+ *  presenting, and hunting for "20" on a 1-60 slider is not something to do with
+ *  an audience watching. These are the values anyone actually wants. */
+const TIME_SCALES = [1, 5, 20, 60, 120];
 
 export default function Simulator() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -110,6 +130,11 @@ export default function Simulator() {
   const [tool, setTool] = useState<Tool>("pointer");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [ready, setReady] = useState(false);
+  // Both panels can be folded away. The chart is the part of this screen worth
+  // projecting, and a demo on a laptop plugged into a room's display has a lot
+  // less width to spend than the machine it was built on.
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
 
   // --- chart geometry ------------------------------------------------------
 
@@ -186,8 +211,12 @@ export default function Simulator() {
       else rebuildRoute(state);
     };
     resize();
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    // A ResizeObserver rather than a window listener: folding a side panel away
+    // changes the chart's width without the window changing size at all, and a
+    // window listener would miss it and leave the canvas stretched.
+    const observer = new ResizeObserver(resize);
+    if (wrapRef.current) observer.observe(wrapRef.current);
+    return () => observer.disconnect();
   }, [ready]);
 
   // --- the advisory call ---------------------------------------------------
@@ -203,18 +232,10 @@ export default function Simulator() {
     );
 
     const body: AdviseRequest = {
-      vessel: {
-        vessel_id: "MV-SOLMATE-01",
-        length_waterline_m: 11.5,
-        beam_m: 2.8,
-        draft_m: 1.1,
-        displacement_kg: 8500,
-        rated_kw: 90,
-        rated_rpm: state.ratedRpm,
-        admiralty_coefficient: 70,
-        best_bsfc_g_per_kwh: 215,
-        idle_burn_lph: 1.2,
-      },
+      // One spec, read here and in the route request below. See lib/vessel.ts:
+      // two hand-maintained copies is how "one fuel model, one hull" quietly
+      // stops being true.
+      vessel: toVesselInput(state.vesselSpec),
       sea: {
         wind_speed_kn: local.wind_speed_kn ?? 0,
         wind_direction_deg: local.wind_direction_deg ?? 0,
@@ -272,18 +293,7 @@ export default function Simulator() {
     const from = startPort(state);
     const to = endPort(state);
     const body: RouteRequest = {
-      vessel: {
-        vessel_id: "MV-SOLMATE-01",
-        length_waterline_m: 11.5,
-        beam_m: 2.8,
-        draft_m: 1.1,
-        displacement_kg: 8500,
-        rated_kw: 90,
-        rated_rpm: state.ratedRpm,
-        admiralty_coefficient: 70,
-        best_bsfc_g_per_kwh: 215,
-        idle_burn_lph: 1.2,
-      },
+      vessel: toVesselInput(state.vesselSpec),
       origin: { ...toLatLon(state, from.position), name: from.name },
       destination: { ...toLatLon(state, to.position), name: to.name },
       minutes_available: state.scheduleMinutes,
@@ -335,9 +345,12 @@ export default function Simulator() {
     if (frames.length < 4) return;
 
     const body: MaintenanceRequest = {
-      vessel_id: "MV-SOLMATE-01",
+      vessel_id: state.vesselSpec.vesselId,
       frames: frames.slice(),
       observed_hours: state.engineHours,
+      // Enables the duty-cycle summary. From the same spec that sizes the engine
+      // everywhere else, so switching preset moves exposure and fuel together.
+      rated_rpm: state.vesselSpec.ratedRpm,
     };
 
     try {
@@ -380,7 +393,7 @@ export default function Simulator() {
     const latest = state.health.frames[state.health.frames.length - 1];
     if (!latest) return;
 
-    const body: SafetyRequest = { vessel_id: "MV-SOLMATE-01", frame: latest };
+    const body: SafetyRequest = { vessel_id: state.vesselSpec.vesselId, frame: latest };
 
     try {
       const previous = state.safety.state?.severity ?? "nominal";
@@ -448,7 +461,7 @@ export default function Simulator() {
       voyage_id: `${state.simClockMs}-${from.name}-${to.name}`
         .replace(/[^a-zA-Z0-9-]+/g, "-")
         .toLowerCase(),
-      vessel_id: "MV-SOLMATE-01",
+      vessel_id: state.vesselSpec.vesselId,
       departed_at: new Date(departedMs).toISOString(),
       arrived_at: new Date(state.simClockMs).toISOString(),
       origin_name: from.name,
@@ -473,28 +486,61 @@ export default function Simulator() {
   }, []);
 
   // --- live forecast -------------------------------------------------------
+  //
+  // The values and their provenance arrive together and are stored together.
+  // The panel renders both, because "live weather" is the easiest claim in this
+  // simulator to make and the hardest for anyone watching to check -- so the
+  // grid cell that answered, the time it answered, and which of the two
+  // endpoints answered are all kept and shown rather than discarded here.
 
-  useEffect(() => {
-    if (!ready) return;
-    const pull = async () => {
-      const state = stateRef.current;
-      if (!state.liveForecast) return;
-      const live = await fetchOpenMeteo();
-      if (!live) {
+  const pullForecast = useCallback(async (manual = false) => {
+    const state = stateRef.current;
+    if (!state.liveForecast && !manual) return;
+
+    state.forecast.syncing = true;
+    setSnapshot(buildSnapshot(state));
+    try {
+      const result = await fetchOpenMeteo();
+      if (!result) {
+        state.forecast.error = "Open-Meteo unreachable";
         addLog(state, "Open-Meteo unreachable; holding last known conditions.", "warn");
         return;
       }
-      Object.assign(state.env, live);
+      Object.assign(state.env, result.values);
+      // A real observation becomes the new set point. Without this a manual sync
+      // taken while the drift walk is running would be hauled straight back to
+      // the previous anchor, so the freshly-fetched conditions would visibly
+      // decay toward stale ones over the next few seconds.
+      Object.assign(state.drift.anchor, result.values);
+      state.forecast.meta = result.meta;
+      state.forecast.error = null;
       addLog(
         state,
-        `Open-Meteo: wind ${(live.windSpeedKn ?? 0).toFixed(0)} kn, ` +
-          `sea ${(live.waveHeightM ?? 0).toFixed(1)} m.`,
+        `Open-Meteo ${result.meta.gridLatitude?.toFixed(2)}°N ` +
+          `${result.meta.gridLongitude?.toFixed(2)}°E: wind ` +
+          `${(result.values.windSpeedKn ?? state.env.windSpeedKn).toFixed(0)} kn, ` +
+          `sea ${(result.values.waveHeightM ?? state.env.waveHeightM).toFixed(1)} m.`,
       );
-    };
-    void pull();
-    const id = setInterval(() => void pull(), 60_000);
+    } finally {
+      state.forecast.syncing = false;
+      setSnapshot(buildSnapshot(stateRef.current));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    void pullForecast();
+    const id = setInterval(() => void pullForecast(), 60_000);
     return () => clearInterval(id);
-  }, [ready]);
+  }, [ready, pullForecast]);
+
+  // Manual sync turns the forecast on if it was off. Someone reaching for the
+  // button is asking for live data, and refusing because a checkbox elsewhere is
+  // unticked would be the interface arguing with an unambiguous instruction.
+  const syncForecast = useCallback(() => {
+    stateRef.current.liveForecast = true;
+    void pullForecast(true);
+  }, [pullForecast]);
 
   // --- render loop ---------------------------------------------------------
 
@@ -525,14 +571,16 @@ export default function Simulator() {
         const local = localConditions(state);
         const preset = WEATHER[state.env.weather];
 
-        if (state.pov === "helm") {
-          // Where the eye actually is, in real coordinates. The helm view needs
-          // it to place the sun.
+        if (state.pov === "helm" || state.pov === "chase") {
+          // Both exterior cameras are looking out from the same place at the
+          // same instant, so they are handed the identical scene and differ only
+          // in where the lens is. Building it once is what guarantees that -- two
+          // constructions would be two chances to disagree about the sun.
           const eye = toLatLon(state, {
             x: state.width ? state.vessel.position.x / state.width : 0.5,
             y: state.height ? state.vessel.position.y / state.height : 0.5,
           });
-          drawHelm(ctx, {
+          const scene = {
             width: state.width,
             height: state.height,
             timeSeconds: state.timeSeconds,
@@ -562,7 +610,9 @@ export default function Simulator() {
                   HELM_FOV_DEG,
                 )
               : [],
-          });
+          };
+          if (state.pov === "helm") drawHelm(ctx, scene);
+          else drawChase(ctx, scene);
         } else {
           drawChart(ctx, {
             width: state.width,
@@ -611,6 +661,15 @@ export default function Simulator() {
   const onMouseDown = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const state = stateRef.current;
     const { x, y } = canvasPoint(event);
+
+    // Nothing on this canvas is placeable unless the canvas is a chart. The
+    // hazard tools read the click as a position in chart space; in an exterior
+    // camera the same pixels mean a direction the lens is pointing, so a click
+    // there would drop a squall at an arbitrary point of the strait with nothing
+    // on screen to show it had happened. The rail is hidden in those views, but
+    // the digit shortcuts still select a tool, so hiding the rail was never
+    // enough on its own.
+    if (!isChartView(state.pov)) return;
 
     if (tool === "obstacle") {
       state.obstacles.push({ x, y, radius: 22 + Math.random() * 16 });
@@ -704,23 +763,70 @@ export default function Simulator() {
     if (swapped) void requestRoute();
   };
 
+  // --- keyboard ------------------------------------------------------------
+  //
+  // Digits pick a chart tool and space runs the voyage. Both are for presenting:
+  // reaching across to a toolbar mid-sentence costs more attention than it looks
+  // like it does, and the tool rail advertises its own bindings so this is
+  // discoverable rather than folklore.
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      // Never steal a keystroke from a field someone is typing in -- the vessel
+      // panel is full of number inputs, and "1" belongs to them while focused.
+      const target = event.target as HTMLElement | null;
+      if (
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        (target &&
+          (target.isContentEditable ||
+            ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)))
+      ) {
+        return;
+      }
+
+      const byKey = TOOLS.find((entry) => entry.key === event.key);
+      if (byKey) {
+        setTool(byKey.id);
+        return;
+      }
+      if (event.key === " ") {
+        event.preventDefault();
+        toggleVoyage();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   return (
     <div className="flex h-screen w-screen flex-col bg-slate-950 text-slate-100">
-      <header className="flex shrink-0 items-center justify-between border-b border-slate-800 px-4 py-2.5">
-        <div className="flex items-baseline gap-3">
-          <span className="text-base font-semibold tracking-tight">
+      <header className="flex shrink-0 items-center gap-3 border-b border-slate-800 bg-slate-900/40 px-3 py-2">
+        <button
+          onClick={() => setLeftOpen((v) => !v)}
+          title="Toggle the control panel"
+          aria-expanded={leftOpen}
+          className="rounded p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+        >
+          <PanelIcon side="left" />
+          <span className="sr-only">Toggle control panel</span>
+        </button>
+
+        <div className="flex items-baseline gap-2.5">
+          <span className="text-sm font-semibold tracking-tight">
             Marine<span className="text-orange-500">-AI</span>
           </span>
-          <span className="text-xs text-slate-400">
-            Simulator console &middot; Iloilo Strait
+          <span className="hidden text-[11px] text-slate-500 lg:inline">
+            {snapshot?.vessel.name ?? "—"} &middot; Iloilo Strait
           </span>
-          {snapshot && snapshot.timeScale > 1 && (
-            <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-amber-400">
-              {snapshot.timeScale.toFixed(0)}x real time
-            </span>
-          )}
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="ml-auto flex items-center gap-2">
+          <TimeScaleSwitch
+            value={snapshot?.timeScale ?? 20}
+            onChange={(v) => mutate((state) => (state.timeScale = v))}
+          />
           <PovSwitch
             value={snapshot?.pov ?? "north-up"}
             onChange={(pov) => mutate((state) => (state.pov = pov))}
@@ -728,21 +834,43 @@ export default function Simulator() {
           <button
             onClick={swapPorts}
             disabled={snapshot?.running}
-            className="rounded border border-slate-700 px-3 py-1.5 text-xs hover:bg-slate-800 disabled:opacity-40"
+            className="rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-40"
           >
             Reverse
           </button>
           <button
             onClick={toggleVoyage}
-            className="rounded bg-orange-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-orange-600"
+            className="rounded bg-orange-500 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-orange-600"
           >
             {snapshot?.arrived ? "New voyage" : snapshot?.running ? "Pause" : "Start voyage"}
+          </button>
+          <button
+            onClick={() => setRightOpen((v) => !v)}
+            title="Toggle the bridge display"
+            aria-expanded={rightOpen}
+            className="rounded p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+          >
+            <PanelIcon side="right" />
+            <span className="sr-only">Toggle bridge display</span>
           </button>
         </div>
       </header>
 
       <main className="flex min-h-0 flex-1">
-        <ControlPanel state={stateRef} snapshot={snapshot} onMutate={mutate} />
+        <aside
+          className={`shrink-0 overflow-hidden border-r border-slate-800 bg-slate-900/60 transition-[width] duration-200 ${
+            leftOpen ? "w-72" : "w-0 border-r-0"
+          }`}
+        >
+          <div className="h-full w-72">
+            <ControlPanel
+              state={stateRef}
+              snapshot={snapshot}
+              onMutate={mutate}
+              onSyncForecast={syncForecast}
+            />
+          </div>
+        </aside>
 
         <section className="relative min-w-0 flex-1" ref={wrapRef}>
           <canvas
@@ -752,37 +880,108 @@ export default function Simulator() {
             onMouseUp={endDrag}
             onMouseLeave={endDrag}
             className="block h-full w-full"
-            style={{ cursor: tool === "pointer" ? "grab" : "crosshair" }}
+            style={{
+              cursor: !snapshot || !isChartView(snapshot.pov)
+                ? "default"
+                : tool === "pointer"
+                  ? "grab"
+                  : "crosshair",
+            }}
           />
 
-          {snapshot?.pov !== "helm" && (
-            <div className="absolute left-3 top-3 flex gap-1 rounded border border-slate-700 bg-slate-900/85 p-1 backdrop-blur">
-              {(["pointer", "obstacle", "storm"] as Tool[]).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTool(t)}
-                  className={`rounded px-2.5 py-1 text-xs capitalize ${
-                    tool === t ? "bg-slate-700 text-white" : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
+          {snapshot && isChartView(snapshot.pov) && <ToolRail tool={tool} onChange={setTool} />}
+
+          <CompassRose
+            headingDeg={snapshot?.headingDeg ?? 0}
+            pov={snapshot?.pov ?? "north-up"}
+            onResetNorth={() => mutate((state) => (state.pov = "north-up"))}
+          />
+
+          {/* Time compression is stated on the chart itself, not only in the
+              header control that sets it. A crossing that takes seventeen
+              minutes in reality must never appear to take one, and the place
+              someone is looking while it happens is the map. */}
+          {snapshot && snapshot.timeScale > 1 && (
+            <div className="pointer-events-none absolute right-3 top-3 rounded border border-amber-900/60 bg-slate-900/85 px-2 py-1 font-mono text-[10px] text-amber-400 backdrop-blur">
+              {snapshot.timeScale}&times; real time
             </div>
           )}
 
           {/* CC BY 4.0 requires attribution, so this is a licence condition
               rather than a courtesy. It stays on screen in every view. */}
-          <p className="absolute bottom-2 left-3 max-w-[46rem] text-[10px] leading-snug text-slate-500">
+          <p className="absolute bottom-2 left-3 right-3 max-w-[46rem] text-[10px] leading-snug text-slate-500">
             Imagery: Sentinel-2 cloudless by EOX &mdash; modified Copernicus Sentinel data 2020
             (CC BY 4.0). Coastline: Natural Earth (public domain). Forecast: Open-Meteo
             (CC BY 4.0). Not for navigation. Simulated telemetry &mdash; no hardware.
           </p>
         </section>
 
-        <TelemetryPanel snapshot={snapshot} />
+        <aside
+          className={`shrink-0 overflow-hidden border-l border-slate-800 bg-slate-900/60 transition-[width] duration-200 ${
+            rightOpen ? "w-96" : "w-0 border-l-0"
+          }`}
+        >
+          <div className="h-full w-96">
+            <TelemetryPanel snapshot={snapshot} />
+          </div>
+        </aside>
       </main>
     </div>
+  );
+}
+
+/**
+ * Time compression, as steps.
+ *
+ * The reference simulator puts this in the header as a dropdown, which is the
+ * right instinct -- it is reached for mid-sentence while presenting -- but a
+ * dropdown is two clicks and a menu. A segmented control is one click and the
+ * current value is readable without opening anything.
+ */
+function TimeScaleSwitch({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div
+      className="flex items-center rounded border border-slate-700 p-0.5"
+      role="group"
+      aria-label="Time compression"
+    >
+      {TIME_SCALES.map((scale) => (
+        <button
+          key={scale}
+          onClick={() => onChange(scale)}
+          aria-pressed={value === scale}
+          title={scale === 1 ? "Real time" : `${scale} times real time`}
+          className={`rounded px-2 py-1 font-mono text-[11px] ${
+            value === scale
+              ? "bg-slate-700 text-white"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          {scale}&times;
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PanelIcon({ side }: { side: "left" | "right" }) {
+  return (
+    <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" aria-hidden>
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" strokeWidth="1.2" />
+      <line
+        x1={side === "left" ? "6" : "10"}
+        y1="2.5"
+        x2={side === "left" ? "6" : "10"}
+        y2="13.5"
+        strokeWidth="1.2"
+      />
+    </svg>
   );
 }
 
@@ -798,6 +997,7 @@ function PovSwitch({
     { id: "course-up", label: "Course-up", hint: "Bow up, as steered" },
     { id: "follow", label: "Follow", hint: "Centred on the vessel" },
     { id: "helm", label: "Helm", hint: "From behind the wheel" },
+    { id: "chase", label: "Chase", hint: "From astern, vessel in frame" },
   ];
   return (
     <div className="flex rounded border border-slate-700 p-0.5">
@@ -852,6 +1052,7 @@ function buildSnapshot(state: SimState): Snapshot {
     progress: state.vessel.progress,
     zone: local.zone,
     diverted: state.diverted,
+    scheduleMinutes: state.scheduleMinutes,
     relativeWindDeg: relativeBearing(heading, local.wind_direction_deg ?? 0),
     relativeWaveDeg: relativeBearing(heading, local.wave_direction_deg ?? 0),
     rollDeg: motion.rollDeg,
@@ -859,6 +1060,8 @@ function buildSnapshot(state: SimState): Snapshot {
     fuelUsedL: state.voyage.fuelUsedL,
     advisedFuelL: state.voyage.advisedFuelL,
     elapsedSeconds: state.voyage.elapsedSeconds,
+    conditions: local,
+    vessel: { ...state.vesselSpec },
     api: { ...state.api },
     routePlan: { ...state.routePlan },
     // The window itself never crosses into React state. It is up to 120 frames
@@ -873,6 +1076,7 @@ function buildSnapshot(state: SimState): Snapshot {
       frameCount: state.health.frames.length,
     },
     safety: { ...state.safety },
+    forecast: { ...state.forecast },
     log: state.log.slice(0, 24),
     liveForecast: state.liveForecast,
     timeScale: state.timeScale,

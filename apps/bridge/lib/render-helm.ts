@@ -82,8 +82,8 @@ export interface VesselMotion {
   encounterPeriod: number;
 }
 
-const MAX_ROLL_DEG = 22;
-const MAX_PITCH_DEG = 9;
+export const MAX_ROLL_DEG = 22;
+export const MAX_PITCH_DEG = 9;
 const HORIZON_FRACTION = 0.46;
 export const HELM_FOV_DEG = 70;
 /** Horizontal field of view. Exported because the horizon ray-cast in
@@ -123,7 +123,7 @@ export function vesselMotion(scene: HelmScene): VesselMotion {
 }
 
 /** Where the sun sits on screen, and whether it is in frame at all. */
-interface SunOnScreen {
+export interface SunOnScreen {
   sun: SunPosition;
   /** Screen x of the sun's bearing. May be off-canvas; the glitter path still
    *  needs it, because a sun behind your shoulder still lights the water. */
@@ -133,7 +133,7 @@ interface SunOnScreen {
   visible: boolean;
 }
 
-function projectSun(scene: HelmScene, horizonY: number): SunOnScreen {
+export function projectSun(scene: HelmScene, horizonY: number): SunOnScreen {
   const sun = sunPosition(scene.atMs, scene.latitude, scene.longitude);
   const pixelsPerDegree = scene.width / HELM_FOV_DEG;
   const relativeDeg = relativeBearing(scene.headingDeg, sun.azimuthDeg);
@@ -144,21 +144,46 @@ function projectSun(scene: HelmScene, horizonY: number): SunOnScreen {
   return { sun, x, y, visible };
 }
 
-export function drawHelm(ctx: CanvasRenderingContext2D, scene: HelmScene): void {
+/**
+ * Where the horizon sits for a given pitch. Pitch raises and lowers it; roll
+ * (applied by `drawSeascape`) tilts it.
+ *
+ * Exported because the chase camera needs the same answer for its own, damped,
+ * pitch -- and because the sun is projected relative to this line, so a second
+ * view computing it slightly differently would put the sun in a different place
+ * in the sky than the helm view does at the same instant.
+ */
+export function horizonYFor(scene: HelmScene, pitchDeg: number): number {
+  return scene.height * HORIZON_FRACTION + (pitchDeg / MAX_PITCH_DEG) * scene.height * 0.1;
+}
+
+/**
+ * The world: sky, cloud, sun, shoreline and sea, rolled to the given attitude.
+ *
+ * Everything outside the vessel lives here, and it is exported so that any
+ * camera looking out at the strait draws the identical seascape. That is not
+ * only economy -- it is the reason two views of the same moment agree. The sun
+ * is where the almanac puts it, the shoreline is the ray-cast from the real land
+ * mask, and the sea is lit from the sun's true bearing; a second camera with its
+ * own copy of any of that would drift from this one the first time either was
+ * touched, and the drift would show up as the two views disagreeing about where
+ * the light is coming from.
+ *
+ * `attitude` is the CAMERA's roll and pitch, which is not always the vessel's --
+ * see the chase camera, which is deliberately steadier than the boat it follows.
+ */
+export function drawSeascape(
+  ctx: CanvasRenderingContext2D,
+  scene: HelmScene,
+  attitude: VesselMotion,
+  solar: SunOnScreen,
+  horizonY: number,
+): void {
   const { width: w, height: h } = scene;
-  const motion = vesselMotion(scene);
-
-  ctx.save();
-  ctx.clearRect(0, 0, w, h);
-
-  // Pitch raises and lowers the horizon; roll tilts it. Rotating about the
-  // screen centre keeps the geometry stable at large roll angles.
-  const horizonY = h * HORIZON_FRACTION + (motion.pitchDeg / MAX_PITCH_DEG) * h * 0.10;
-  const solar = projectSun(scene, horizonY);
 
   ctx.save();
   ctx.translate(w / 2, h / 2);
-  ctx.rotate(motion.rollDeg * DEG);
+  ctx.rotate(attitude.rollDeg * DEG);
   // Overdraw well beyond the viewport so rotation never exposes a corner.
   ctx.translate(-w / 2, -h / 2);
   // Overdraw margin for the roll rotation. Rolling by MAX_ROLL_DEG about the
@@ -173,17 +198,35 @@ export function drawHelm(ctx: CanvasRenderingContext2D, scene: HelmScene): void 
   drawClouds(ctx, scene, horizonY, bleed, solar);
   drawSunDisc(ctx, scene, solar, horizonY);
   drawLandmarks(ctx, scene, horizonY, solar);
-  drawSea(ctx, scene, horizonY, bleed, motion, solar);
+  drawSea(ctx, scene, horizonY, bleed, attitude, solar);
 
   ctx.restore();
+}
 
-  drawSpray(ctx, scene, motion, horizonY);
+/** Weather that sits between the world and the lens, in front of everything
+ *  except the vessel and the HUD. Shared with the chase camera. */
+export function drawWeatherOverlay(ctx: CanvasRenderingContext2D, scene: HelmScene): void {
   drawRain(ctx, scene);
-
   if (scene.gloom > 0) {
     ctx.fillStyle = `rgba(6, 14, 26, ${scene.gloom})`;
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(0, 0, scene.width, scene.height);
   }
+}
+
+export function drawHelm(ctx: CanvasRenderingContext2D, scene: HelmScene): void {
+  const { width: w, height: h } = scene;
+  const motion = vesselMotion(scene);
+
+  ctx.save();
+  ctx.clearRect(0, 0, w, h);
+
+  const horizonY = horizonYFor(scene, motion.pitchDeg);
+  const solar = projectSun(scene, horizonY);
+
+  drawSeascape(ctx, scene, motion, solar, horizonY);
+
+  drawSpray(ctx, scene, motion, horizonY);
+  drawWeatherOverlay(ctx, scene);
 
   drawBow(ctx, scene, motion, solar);
   drawHud(ctx, scene, motion, solar);
@@ -985,15 +1028,32 @@ function drawBow(
   ctx.restore();
 }
 
-function drawHud(
+/**
+ * The HUD.
+ *
+ * Every line here carries a dark halo, and that is a legibility requirement
+ * rather than a style. This text is drawn over whatever the sky happens to be,
+ * and the sky is computed from the real solar position -- so it runs from
+ * near-black before dawn to a bright pale blue at midday. Colours picked against
+ * one end of that range fail at the other, and they fail silently: the advisory
+ * RPM and the sun readout were washing out to nearly nothing against a 07:45
+ * sky, which is exactly the hour the demo opens on and exactly the frame a
+ * screencast would capture. A shadow costs one state change and makes the
+ * contrast independent of the weather, the hour and the palette.
+ */
+export function drawHud(
   ctx: CanvasRenderingContext2D,
   scene: HelmScene,
   motion: VesselMotion,
   solar: SunOnScreen,
 ) {
   const { width: w } = scene;
+  ctx.save();
+  ctx.shadowColor = "rgba(2, 6, 23, 0.9)";
+  ctx.shadowBlur = 5;
+  ctx.shadowOffsetY = 1;
   ctx.font = "600 13px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillStyle = "rgba(248, 250, 252, 0.92)";
+  ctx.fillStyle = "rgba(248, 250, 252, 0.98)";
   ctx.textAlign = "center";
 
   const heading = String(Math.round(normaliseDeg(scene.headingDeg))).padStart(3, "0");
@@ -1005,8 +1065,11 @@ function drawHud(
   );
 
   if (scene.recommendedRpm != null) {
-    ctx.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
-    ctx.fillStyle = "rgba(249, 115, 22, 0.95)";
+    // Lifted to 13px and to a lighter orange. The advisory is the one number on
+    // this view the product exists to deliver; it should not be the dimmest
+    // thing on screen, which at 12px in 0.95 orange over a daylit sky it was.
+    ctx.font = "600 13px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.fillStyle = "rgba(251, 146, 60, 1)";
     ctx.fillText(
       `ADVISORY  ${Math.round(scene.recommendedRpm)} RPM   (now ${Math.round(scene.currentRpm)})`,
       w / 2,
@@ -1016,8 +1079,8 @@ function drawHud(
 
   // Local time and sun elevation. Small, but it is the label that tells a judge
   // the lighting is computed rather than art-directed.
-  ctx.font = "500 10px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillStyle = "rgba(203, 213, 225, 0.55)";
+  ctx.font = "500 11px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillStyle = "rgba(226, 232, 240, 0.85)";
   const local = new Date(scene.atMs).toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
@@ -1027,8 +1090,9 @@ function drawHud(
     `${local} PHT   SUN ${solar.sun.elevationDeg >= 0 ? "+" : ""}${solar.sun.elevationDeg.toFixed(0)}° ` +
       `BRG ${Math.round(solar.sun.azimuthDeg)}°`,
     w / 2,
-    64,
+    65,
   );
+  ctx.restore();
 }
 
 // --- helpers ----------------------------------------------------------------

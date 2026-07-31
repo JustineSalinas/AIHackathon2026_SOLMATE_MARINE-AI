@@ -128,6 +128,45 @@ export function conditionsAt(
 }
 
 /**
+ * Where a set of forecast values actually came from.
+ *
+ * The display shows all of this, and that is a deliberate choice rather than a
+ * debugging leftover. "Live weather" is the easiest claim in the demo to make
+ * and the hardest for anyone watching to check, so the panel carries the grid
+ * cell that answered, the wall-clock time it answered, and which of the two
+ * endpoints succeeded. A forecast that cannot say where it came from is a
+ * number someone typed in.
+ *
+ * Note `gridLatitude` / `gridLongitude`: Open-Meteo snaps a request to its
+ * nearest model cell and reports the cell it used. Showing the cell rather than
+ * echoing back what we asked for is the difference between evidence and
+ * decoration -- and the offset, usually a kilometre or two, is real and worth
+ * being honest about.
+ */
+export interface ForecastMeta {
+  /** Model grid cell that answered, not the point we requested. */
+  gridLatitude: number | null;
+  gridLongitude: number | null;
+  /** Wall-clock epoch ms at which these values arrived. */
+  fetchedAtMs: number;
+  /** Timestamp Open-Meteo stamped on the observation itself. */
+  observedAt: string | null;
+  /** Peak gust, knots. Not an input to the fuel model -- the resistance terms
+   *  take mean wind -- so it is reported as an observation and nothing more. */
+  gustKn: number | null;
+  /** Which endpoints answered. A marine outage with a working weather endpoint
+   *  is a partial result, and the display says so rather than implying sea state
+   *  was refreshed when only wind was. */
+  atmosphere: boolean;
+  marine: boolean;
+}
+
+export interface ForecastResult {
+  values: Partial<EnvironmentInputs>;
+  meta: ForecastMeta;
+}
+
+/**
  * Live marine conditions for the Iloilo Strait, from Open-Meteo.
  *
  * Open-Meteo, and only Open-Meteo. The prototype's UI credited "Windfinder &
@@ -136,39 +175,64 @@ export function conditionsAt(
  *
  * Licence CC BY 4.0, free tier, no API key -- which also means a judge can clone
  * the repository and run it without registering for anything.
+ *
+ * The two endpoints are settled independently. Marine coverage is patchier than
+ * atmospheric, and a partial answer is more useful than none as long as the
+ * display is told which half it got.
  */
 export async function fetchOpenMeteo(
   latitude = 10.6928,
   longitude = 122.5644,
-): Promise<Partial<EnvironmentInputs> | null> {
-  try {
-    const [weather, marine] = await Promise.all([
-      fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
-          `&current=wind_speed_10m,wind_direction_10m`,
-      ).then((r) => r.json()),
-      fetch(
-        `https://marine-api.open-meteo.com/v1/marine?latitude=${latitude}&longitude=${longitude}` +
-          `&current=wave_height,wave_direction,ocean_current_velocity,ocean_current_direction`,
-      ).then((r) => r.json()),
-    ]);
+): Promise<ForecastResult | null> {
+  const [weather, marine] = await Promise.allSettled([
+    fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
+        `&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m`,
+    ).then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))),
+    fetch(
+      `https://marine-api.open-meteo.com/v1/marine?latitude=${latitude}&longitude=${longitude}` +
+        `&current=wave_height,wave_direction,ocean_current_velocity,ocean_current_direction`,
+    ).then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))),
+  ]);
 
-    const out: Partial<EnvironmentInputs> = {};
-    if (weather?.current) {
-      // Open-Meteo reports wind in km/h by default.
-      out.windSpeedKn = weather.current.wind_speed_10m / 1.852;
-      out.windDirectionDeg = weather.current.wind_direction_10m;
-    }
-    if (marine?.current) {
-      const c = marine.current;
-      if (c.wave_height != null) out.waveHeightM = c.wave_height;
-      if (c.wave_direction != null) out.waveDirectionDeg = c.wave_direction;
-      if (c.ocean_current_velocity != null) out.currentSpeedKn = c.ocean_current_velocity / 1.852;
-      if (c.ocean_current_direction != null) out.currentDirectionDeg = c.ocean_current_direction;
-    }
-    return out;
-  } catch {
-    // Offline is a designed state on these routes, not an error screen.
-    return null;
+  const atmosphere = weather.status === "fulfilled" ? weather.value : null;
+  const sea = marine.status === "fulfilled" ? marine.value : null;
+
+  // Both down is offline, which is a designed state on these routes rather than
+  // an error screen. The caller holds its last known conditions and ages them.
+  if (!atmosphere && !sea) return null;
+
+  const values: Partial<EnvironmentInputs> = {};
+  let gustKn: number | null = null;
+  let observedAt: string | null = null;
+
+  if (atmosphere?.current) {
+    // Open-Meteo reports wind in km/h by default.
+    const c = atmosphere.current;
+    if (c.wind_speed_10m != null) values.windSpeedKn = c.wind_speed_10m / 1.852;
+    if (c.wind_direction_10m != null) values.windDirectionDeg = c.wind_direction_10m;
+    if (c.wind_gusts_10m != null) gustKn = c.wind_gusts_10m / 1.852;
+    observedAt = c.time ?? null;
   }
+  if (sea?.current) {
+    const c = sea.current;
+    if (c.wave_height != null) values.waveHeightM = c.wave_height;
+    if (c.wave_direction != null) values.waveDirectionDeg = c.wave_direction;
+    if (c.ocean_current_velocity != null) values.currentSpeedKn = c.ocean_current_velocity / 1.852;
+    if (c.ocean_current_direction != null) values.currentDirectionDeg = c.ocean_current_direction;
+    observedAt = observedAt ?? c.time ?? null;
+  }
+
+  return {
+    values,
+    meta: {
+      gridLatitude: atmosphere?.latitude ?? sea?.latitude ?? null,
+      gridLongitude: atmosphere?.longitude ?? sea?.longitude ?? null,
+      fetchedAtMs: Date.now(),
+      observedAt,
+      gustKn,
+      atmosphere: Boolean(atmosphere?.current),
+      marine: Boolean(sea?.current),
+    },
+  };
 }

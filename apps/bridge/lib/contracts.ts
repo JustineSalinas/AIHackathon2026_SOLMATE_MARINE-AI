@@ -5,7 +5,7 @@
 //
 // The Python models in packages/contracts and apps/api are the single
 // source of truth. Change them and re-run; never hand-edit this file.
-// Generated from commit bad7765.
+// Generated from commit 295166c.
 
 export interface AnomalyStream {
   /** Field path, e.g. 'electro_mechanical.coolant_temp_c'. */
@@ -32,6 +32,21 @@ export interface CurvePoint {
   rpm: number;
   shaft_kw: number;
   litres_per_hour: number;
+}
+
+export interface DutyCycleSummary {
+  /** Engine-running hours integrated in THIS window. Not a lifetime total. */
+  running_hours: number;
+  /** Running hours per load band within this window, keyed by band name. */
+  hours_by_band: Record<string, number>;
+  /** Weighted wear-hours per running hour. 1.0 is a window spent at cruise; above 1.0 is harder use. A rate, so it is window-length independent. */
+  severity_index: number;
+  /** Wear-equivalent hours for this window: running hours x band weight. */
+  weighted_hours: number;
+  /** Band with the most hours; ties break toward harder. */
+  dominant_band: string;
+  dominant_label_en: string;
+  dominant_label_fil: string;
 }
 
 export interface ElectroMechanicalFrame {
@@ -92,6 +107,8 @@ export interface MaintenanceStatus {
   observed_hours: number;
   /** How well-established this vessel's normal is. Low early in Phase 1. */
   baseline_confidence: number;
+  /** Engine exposure over this window. None when the caller did not supply a rated RPM, since load is meaningless without a rating to divide by. */
+  duty?: DutyCycleSummary | null;
   likely_component?: string | null;
   likely_component_fil?: string | null;
   recommended_maintenance_date?: string | null;
@@ -175,6 +192,8 @@ export interface RouteRecommendation {
   waypoints: Waypoint[];
   total_distance_nm: number;
   eta: string;
+  /** Crossing time the hull can actually achieve, summed from each leg's optimised speed. Always populated where a speed was found. When a schedule was requested, `eta` is the arrival that was ASKED FOR -- legs are planned at the required speed-over-ground -- so where schedule_feasible is False the two differ and THIS is the honest one. None only when some leg admits no forward speed at all, where a crossing time does not exist rather than being very large. */
+  achievable_minutes?: number | null;
   /** Whole-route burn, same fuel model as Speed. */
   predicted_burn_l: number;
   /** Great-circle direct route -- what the captain would otherwise steer. */
@@ -401,6 +420,8 @@ export interface MaintenanceRequest {
   frames: TelemetryFrame[];
   /** This vessel's run-hours, which set cold-start confidence. None uses the baseline's own history count. */
   observed_hours?: number | null;
+  /** Engine rated RPM, which turns the frames' RPM and torque into a load fraction and so enables the duty-cycle summary. None omits that section rather than assuming a rating. */
+  rated_rpm?: number | null;
 }
 
 export interface SafetyRequest {
