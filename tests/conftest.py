@@ -9,6 +9,14 @@ non-deterministic in a suite that asserts on sentences. The key is cleared for
 the whole run; `tests/test_advisory.py` puts a fake one back, scoped to the
 tests that need it, and never lets a real client be constructed.
 
+It is cleared by being set **empty**, not by being deleted, and that detail is
+load-bearing: `apps/api/main.py` calls `load_dotenv()` at import, which happens
+*after* this file runs, and `load_dotenv` repopulates any variable that is
+absent while leaving any variable that is already set alone. Deleting the key
+here therefore handed it straight back the moment a test imported the app, and
+the suite's hermeticity silently came to rest on `MARINE_AI_ADVISORY_DISABLED`
+alone. Both defences are meant to hold independently.
+
 **No disk.** The voyage store is the only part of this system that writes. Left to
 its default it would put a real `data/voyages.db` in the working tree, so the
 suite would leave a file behind, and worse, a test's voyages would still be there
@@ -25,5 +33,6 @@ from __future__ import annotations
 import os
 
 os.environ.setdefault("MARINE_AI_VOYAGE_DB", ":memory:")
-os.environ.pop("ANTHROPIC_API_KEY", None)
+os.environ["ANTHROPIC_API_KEY"] = ""  # empty, not absent -- see the docstring
+os.environ["GOOGLE_API_KEY"] = ""  # same reasoning; provider selection prefers it
 os.environ["MARINE_AI_ADVISORY_DISABLED"] = "1"

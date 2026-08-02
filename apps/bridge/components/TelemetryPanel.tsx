@@ -22,10 +22,73 @@ import {
   setAndDrift,
   signedToFixed,
 } from "@/lib/derived";
+import { LANGUAGE_LABEL, ordered, toggleLanguage, useLanguage } from "@/lib/language";
 import { RelativeSeaDial } from "./SeaDial";
 import type { Snapshot } from "./Simulator";
 
 const DIESEL_CO2_KG_PER_L = 2.68;
+
+/**
+ * An advisory sentence pair, in the captain's reading order.
+ *
+ * Both languages are always on screen; the active one is rendered at full
+ * weight and the other beneath it, quieter. Every advisory on this display goes
+ * through here so the four zones cannot drift into disagreeing about which
+ * language leads -- which is precisely what happened before, when English was
+ * hardcoded first in all four.
+ */
+function Advisory({
+  en,
+  fil,
+  className = "text-sm text-slate-100",
+  secondaryClassName = "text-xs italic text-slate-400",
+}: {
+  en: string | null | undefined;
+  fil: string | null | undefined;
+  className?: string;
+  secondaryClassName?: string;
+}) {
+  const language = useLanguage();
+  const { primary, secondary } = ordered(language, en, fil);
+  if (primary === null) return null;
+  return (
+    <>
+      <p className={`leading-snug ${className}`} lang={language === "fil" ? "fil" : "en"}>
+        {primary}
+      </p>
+      {secondary !== null && (
+        <p
+          className={`mb-1 leading-snug ${secondaryClassName}`}
+          lang={language === "fil" ? "en" : "fil"}
+        >
+          {secondary}
+        </p>
+      )}
+    </>
+  );
+}
+
+/**
+ * The language switch, in the trust bar.
+ *
+ * It lives there rather than in a settings screen for the same reason data
+ * freshness does: PRODUCT.md forbids burying anything the captain needs to
+ * trust what he is reading, and which language he is being addressed in is
+ * part of that.
+ */
+function LanguageToggle() {
+  const language = useLanguage();
+  return (
+    <button
+      type="button"
+      onClick={toggleLanguage}
+      aria-label={`Advisory language: ${language === "fil" ? "Filipino" : "English"}. Switch.`}
+      className="rounded border border-slate-700 px-1.5 py-0.5 font-semibold tracking-wider text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
+    >
+      {LANGUAGE_LABEL[language]}
+    </button>
+  );
+}
 
 export default function TelemetryPanel({ snapshot }: { snapshot: Snapshot | null }) {
   const response = snapshot?.api.response ?? null;
@@ -55,12 +118,13 @@ export default function TelemetryPanel({ snapshot }: { snapshot: Snapshot | null
           />
         </div>
 
-        <p className="mb-3 min-h-[2.5rem] text-sm leading-snug text-slate-100">
-          {rec?.advisory_en ?? "Waiting for the advisory service."}
-        </p>
-        {rec?.advisory_fil && (
-          <p className="mb-1 text-xs italic leading-snug text-slate-400">{rec.advisory_fil}</p>
-        )}
+        <div className="mb-3 min-h-[2.5rem]">
+          {rec ? (
+            <Advisory en={rec.advisory_en} fil={rec.advisory_fil} />
+          ) : (
+            <p className="text-sm leading-snug text-slate-100">Waiting for the advisory service.</p>
+          )}
+        </div>
         {/* Who wrote the sentence above. Claude re-words the advice; it never
             chooses it, and anything it returns with a different number or an
             imperative mood is discarded before it reaches this panel. Shown
@@ -128,6 +192,7 @@ export default function TelemetryPanel({ snapshot }: { snapshot: Snapshot | null
           <span className="font-semibold tracking-wider text-slate-400">
             ADVISORY ONLY — CAPTAIN COMMANDS
           </span>
+          <LanguageToggle />
         </div>
       </div>
 
@@ -302,10 +367,14 @@ function SafetyBanner({ snapshot }: { snapshot: Snapshot | null }) {
         </span>
       </div>
 
-      <p className={`mt-1 text-[11px] leading-snug ${critical ? "text-red-100" : "text-amber-100"}`}>
-        {top.message_en}
-      </p>
-      <p className="mt-0.5 text-[10px] italic leading-snug text-slate-400">{top.message_fil}</p>
+      <div className="mt-1">
+        <Advisory
+          en={top.message_en}
+          fil={top.message_fil}
+          className={`text-[11px] ${critical ? "text-red-100" : "text-amber-100"}`}
+          secondaryClassName="mt-0.5 text-[10px] italic text-slate-400"
+        />
+      </div>
 
       {state.active.length > 1 && (
         <p className="mt-1 text-[10px] text-slate-400">
@@ -626,12 +695,14 @@ function RouteZone({ snapshot }: { snapshot: Snapshot | null }) {
             <ScheduleShortfall snapshot={snapshot} rec={rec} />
           )}
 
-          <p className="mt-2 text-[11px] leading-snug text-slate-300">{rec.advisory_en}</p>
-          {rec.advisory_fil && (
-            <p className="mt-1 text-[10px] italic leading-snug text-slate-500">
-              {rec.advisory_fil}
-            </p>
-          )}
+          <div className="mt-2">
+            <Advisory
+              en={rec.advisory_en}
+              fil={rec.advisory_fil}
+              className="text-[11px] text-slate-300"
+              secondaryClassName="mt-1 text-[10px] italic text-slate-500"
+            />
+          </div>
 
           {constrained && (
             <div className="mt-2 space-y-0.5">
@@ -844,12 +915,14 @@ function HealthZone({ snapshot }: { snapshot: Snapshot | null }) {
             </div>
           )}
 
-          <p className="mt-2 text-[11px] leading-snug text-slate-300">{status.advisory_en}</p>
-          {status.advisory_fil && (
-            <p className="mt-1 text-[10px] italic leading-snug text-slate-500">
-              {status.advisory_fil}
-            </p>
-          )}
+          <div className="mt-2">
+            <Advisory
+              en={status.advisory_en}
+              fil={status.advisory_fil}
+              className="text-[11px] text-slate-300"
+              secondaryClassName="mt-1 text-[10px] italic text-slate-500"
+            />
+          </div>
 
           <p className="mt-2 text-[10px] text-slate-600">
             {status.phase === "phase_1_cold_start" ? "Phase 1 — anomaly only" : "Phase 2 — RUL"}

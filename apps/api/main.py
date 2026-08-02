@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TypeVar
 
 from fastapi import FastAPI, Response
@@ -41,8 +42,8 @@ from packages.contracts.route import RouteRecommendation
 from packages.contracts.safety import SafetyState
 from packages.contracts.speed import SpeedRecommendation
 from packages.store import VoyageStore, open_store
-from services.advisory import enabled as advisory_enabled
 from services.advisory import phrase
+from services.advisory import provider as advisory_provider
 from services.emissions import co2_kg
 from services.emissions.report import build_report, to_csv
 from services.maintenance.baseline import synthetic_healthy_baseline
@@ -60,6 +61,27 @@ from services.speed.optimizer import (
     speed_for_power_kn,
 )
 from services.speed.resistance import SeaState, VesselHull
+
+# Make the documented `uvicorn apps.api.main:app` command actually see `.env`.
+#
+# Nothing else in the repository loads it, so before this the file was inert: a
+# correctly pasted ANTHROPIC_API_KEY behaved exactly like a missing one, and
+# because a missing key is a *supported* state the failure was silent -- every
+# sentence shipped as `advisory_source: "template"` and `GET /health` still
+# reported the layer as enabled. That is an expensive way to discover a working
+# key on demo day.
+#
+# Deliberately optional. `requirements.txt` is the minimal serving image and
+# python-dotenv is not in it; on Vercel the environment comes from project
+# settings and there is no `.env` to read, so this import is expected to fail
+# there. `load_dotenv` never overwrites a variable that is already set, so a
+# real deployment environment always wins over a stray local file.
+try:
+    from dotenv import load_dotenv
+except ImportError:  # serving image -- the platform supplies the environment
+    pass
+else:
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 _state: dict[str, object] = {}
 
@@ -171,7 +193,11 @@ async def health() -> dict:
     return {
         "status": "ok",
         "wear_model_loaded": bool(getattr(loaded, "has_wear_model", False)),
-        "advisory_layer": "claude" if advisory_enabled() else "template",
+        # Names the provider that *would* be asked, not one that has answered:
+        # a key can be present and the account out of credit or over its rate
+        # limit. Confirm the layer really works with a POST /advise and check
+        # `advisory_source` -- see docs/DEPLOY.md section 4.
+        "advisory_layer": advisory_provider() or "template",
         "advisory_only": True,
     }
 

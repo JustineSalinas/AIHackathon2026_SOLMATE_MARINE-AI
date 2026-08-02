@@ -17,6 +17,7 @@ collected from any vessel.
 | `nasa-cmapss` | NASA C-MAPSS turbofan degradation (Saxena et al., 2008) | Public domain (US Gov) | Pretraining the Phase 1 anomaly detector |
 | `natural-earth-coastline` | Natural Earth 10m physical coastline | Public domain | Chart geometry on the bridge display |
 | `sentinel2-cloudless` | Sentinel-2 cloudless 2020 (EOX) | CC BY 4.0 | Satellite basemap, and the land mask the helm view ray-casts for its horizon |
+| `openseamap-seamarks` | OpenSeaMap aids to navigation (OpenStreetMap seamark tags) | ODbL 1.0 | Charted lights and harbour features on the bridge display — 10 marks, 8 lit, in the chart window |
 | `open-meteo-weather-archive` | Open-Meteo Historical Weather API (ERA5 reanalysis) | CC BY 4.0 | Route forecaster's wind targets — 2.6 years, 9-point grid |
 | `open-meteo-marine-archive` | Open-Meteo Marine Weather API (wave + ocean current models) | CC BY 4.0 | Route forecaster's wave/current targets — same grid and range |
 | ~~GEBCO~~ | GEBCO global bathymetry grid | Public, attribution required | Depth safety constraint — **not yet integrated**, and deliberately absent from `data/registry.py` so `data/download.py` cannot fetch a source we do not use. Route Optimization is the module that needs it. |
@@ -24,6 +25,15 @@ collected from any vessel.
 **PAGASA** is named in the technical profile but has **no public programmatic
 API**. It is a stated future integration, not a working data source in this
 build. See [`DEVIATIONS.md`](DEVIATIONS.md).
+
+**OpenSeaMap is crowdsourced, and the display says so.** It is not a
+hydrographic office and not a Notice to Mariners feed: several marks in this
+window cite UK Admiralty notices from 2016, and a light may have changed since
+it was last edited. Absence of a mark means nobody has mapped one, **never** that
+the water is clear. It is fetched once at build time by
+`python -m data.build_seamarks` and committed as `apps/bridge/public/seamarks.json`,
+so the display fetches no tile from anyone at runtime — the same licence
+position the basemap is held to.
 
 ---
 

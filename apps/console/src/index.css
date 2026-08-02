@@ -1,0 +1,260 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Tokens.
+
+   Two surfaces in this repo render the same product: this console and the
+   bridge display in apps/bridge. Until now they disagreed on their own base
+   colour -- #0f172a here against #020617 there -- which is the kind of
+   difference nobody decides and everybody sees when the two are shown in the
+   same pitch. The base below is the bridge's.
+
+   COLOUR MEANS STATE. That is the whole rule. This console previously used
+   nine accent hues across 265 utility instances: orange, emerald, amber, sky,
+   rose, cyan, red, purple, teal. When nine colours are in play none of them is
+   a signal, and colour is the fastest channel an instrument has. The five roles
+   below are the vocabulary; anything outside them is decoration and does not
+   belong on a screen read in two seconds.
+
+   --------------------------------------------------------------------------- */
+
+@theme {
+  /* Surfaces. Base matches apps/bridge/app/globals.css. */
+  --color-base: #020617;
+  --color-surface: #0b1220;
+  --color-surface-raised: #111c2e;
+  --color-hairline: #1e293b;
+
+  /* Ink. `ink-muted` is the floor for body text: it clears 4.5:1 on every
+     surface above. The old slate-400 (#94a3b8) did not, which is where most of
+     the measured contrast failures came from. */
+  --color-ink: #f8fafc;
+  --color-ink-muted: #b6c2d4;
+
+  /* State. Five roles, no more.
+     advisory  the system is offering a recommendation, and primary actions
+     nominal   within limits
+     caution   drifting, or a schedule that cannot be met
+     critical  a rule-based cutoff has tripped
+     info      reference data that is neither good nor bad */
+  --color-advisory: #f97316;
+  --color-nominal: #34d399;
+  --color-caution: #fbbf24;
+  --color-critical: #f87171;
+  --color-info: #56b6f5;
+
+  /* Type. 0.75rem is the FLOOR, not a default.
+     PRODUCT.md: read "at arm's length, in motion, through spray, possibly
+     through salt-crusted glasses". The console previously rendered 43 of 210
+     visible text nodes below 12px and only 6 at 18px or above. Nothing in this
+     interface may go below --text-min again. */
+  --text-min: 0.75rem;      /* 12px — labels, units, secondary detail */
+  --text-body: 0.875rem;    /* 14px — anything read at a glance */
+  --text-readout: 1.125rem; /* 18px — live values */
+  --text-primary-readout: 2.25rem; /* 36px — the throttle advisory */
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--color-base);
+    color: var(--color-ink);
+}
+.hud-font { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+/* Keyboard focus. There was no visible focus state anywhere on 47 buttons, so
+   tabbing through the console was invisible. One ring, one token, everywhere. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-advisory);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* Map attribution: near-white text on a translucent WHITE control, measured at
+   3.61:1. Both map libraries ship a light-theme attribution box, and this app
+   then styles the text near-white for the dark UI -- so the credit that the tile
+   licences actually require was the least readable text on the screen. Both
+   controls get the same dark backing. Leaflet and MapLibre are both live here
+   (2D chart and 3D view), so both selectors are needed. */
+.leaflet-control-attribution,
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl.maplibregl-ctrl-attrib {
+    background: rgba(2, 6, 23, 0.85) !important;
+    color: var(--color-ink-muted) !important;
+    font-size: var(--text-min) !important;
+    padding: 2px 6px !important;
+}
+.leaflet-control-attribution a,
+.maplibregl-ctrl-attrib a,
+.maplibregl-ctrl-attrib-inner,
+.maplibregl-ctrl-attrib-inner a {
+    color: #cfe0f5 !important;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--color-hairline); }
+::-webkit-scrollbar-thumb { background: #f97316; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #ea580c; }
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    background: transparent;
+}
+input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 16px;
+    width: 16px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 2px solid #f97316;
+    cursor: pointer;
+    margin-top: -6px;
+}
+input[type=range]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 4px;
+    cursor: pointer;
+    background: #334155;
+    border-radius: 2px;
+}
+input[type=range]:focus { outline: none; }
+
+/* ---------------------------------------------------------------------------
+   The wordmark.
+
+   Three things were wrong with what this replaced.
+
+   The glyph was Font Awesome's `fa-ship` -- a container ship. This product is a
+   retrofit for 11.5 m fiberglass passenger bancas, and anyone who knows
+   Philippine coastal transport reads a containership logo as "these people have
+   never seen the boat". The mark beside this rule is a double-outrigger banca
+   in plan view, and its geometry is not invented: it is the vessel already
+   drawn on the bridge chart in apps/bridge/lib/render-chart.ts, rotated bow-up.
+   Same hull curve, same two katig booms, same pair of bamboo floats. It is the
+   one silhouette in this product that no other dashboard has.
+
+   The name was set as MARINE-<span class="accent">AI</span>. A word split
+   across two colours so the "AI" half glows is the logo equivalent of gradient
+   text -- it is on a large share of AI products, and here it actively argues
+   against the thesis: the physics decides, the model only phrases. One colour.
+
+   And it was written four different ways across the product (MARINE-AI,
+   Marine-AI Optimiser, Marine-AI, plus a 76-character keyword-salad <title>).
+   `Marine-AI` is the spelling in all nine prose occurrences in the repo, so
+   that is the one that wins.
+   --------------------------------------------------------------------------- */
+
+.brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    color: var(--color-ink);
+}
+
+.brand__mark {
+    width: 1.75rem;
+    height: 1.75rem;
+    flex: none;
+    color: var(--color-advisory);
+}
+
+.brand__word {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    /* Floor is -0.04em; this sits well inside it. Enough to bind the word
+       together at weight 700 without the letters touching. */
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+    .brand__mark { width: 2rem; height: 2rem; }
+    .brand__word { font-size: 1.1875rem; }
+}
+
+.panel {
+    background: rgba(11, 18, 32, 0.88);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(249, 115, 22, 0.2);
+}
+
+#canvasContainer {
+    position: absolute !important;
+    top: 0; left: 0; right: 0; bottom: 0;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 0;
+}
+
+#leafletMap {
+    width: 100% !important;
+    height: 100% !important;
+    position: absolute !important;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 1;
+    background: #091122 !important;
+}
+
+.leaflet-container img {
+    max-width: none !important;
+    max-height: none !important;
+}
+
+@keyframes pulse-border {
+    0% { border-color: rgba(249, 115, 22, 0.4); }
+    50% { border-color: rgba(249, 115, 22, 1); }
+    100% { border-color: rgba(249, 115, 22, 0.4); }
+}
+.ai-active { animation: pulse-border 2s infinite; }
+
+/* Driver.js Customization for Marine-AI Theme */
+.driver-popover {
+  background-color: #0f172a !important; /* slate-900 */
+  border: 1px solid rgba(249, 115, 22, 0.5) !important; /* orange-500 border */
+  box-shadow: 0 0 20px rgba(249, 115, 22, 0.2) !important;
+  color: #f8fafc !important; /* slate-50 */
+  border-radius: 12px !important;
+  font-family: 'Inter', sans-serif !important;
+  max-width: 90vw !important; /* Mobile optimization */
+  width: 350px !important;
+}
+.driver-popover-title {
+  font-weight: 700 !important;
+  color: #f97316 !important; /* orange-500 */
+  margin-bottom: 8px !important;
+  font-size: 1.125rem !important;
+}
+.driver-popover-description {
+  color: #cbd5e1 !important; /* slate-300 */
+  font-size: 0.875rem !important;
+  line-height: 1.5 !important;
+}
+.driver-popover-footer button {
+  background-color: #1e293b !important; /* slate-800 */
+  border: 1px solid #334155 !important; /* slate-700 */
+  color: #f8fafc !important;
+  text-shadow: none !important;
+  border-radius: 6px !important;
+  padding: 6px 12px !important;
+  transition: all 0.2s !important;
+}
+.driver-popover-footer button:hover {
+  background-color: #f97316 !important; /* orange-500 */
+  border-color: #ea580c !important; /* orange-600 */
+}
+.driver-popover-arrow {
+  border-color: #0f172a !important;
+}

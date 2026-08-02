@@ -27,8 +27,6 @@ import math
 import urllib.request
 from pathlib import Path
 
-import shapefile
-
 SHAPEFILE = Path("data/raw/natural-earth-coastline/ne_10m_coastline.shp")
 OUTPUT = Path("apps/bridge/public/chart.json")
 BASEMAP = Path("apps/bridge/public/basemap.jpg")
@@ -77,8 +75,15 @@ def haversine_nm(a: tuple[float, float], b: tuple[float, float]) -> float:
     return 2 * r_nm * math.asin(math.sqrt(h))
 
 
-def _normalise(lon: float, lat: float) -> tuple[float, float]:
-    """Geographic -> normalised chart coordinates, x east, y south (screen order)."""
+def normalise(lon: float, lat: float) -> tuple[float, float]:
+    """Geographic -> normalised chart coordinates, x east, y south (screen order).
+
+    Public because `data/build_seamarks.py` projects into the same chart window
+    and must use the same definition. Two builders writing coordinates for one
+    canvas is exactly the situation where a second, hand-agreeing copy of this
+    arithmetic would eventually drift and put a buoy on the wrong side of a
+    channel.
+    """
     x = (lon - BOUNDS["min_lon"]) / (BOUNDS["max_lon"] - BOUNDS["min_lon"])
     y = (BOUNDS["max_lat"] - lat) / (BOUNDS["max_lat"] - BOUNDS["min_lat"])
     return x, y
@@ -99,7 +104,7 @@ def _clip(points: list[tuple[float, float]]) -> list[list[tuple[float, float]]]:
             and BOUNDS["min_lat"] <= lat <= BOUNDS["max_lat"]
         )
         if inside:
-            current.append(_normalise(lon, lat))
+            current.append(normalise(lon, lat))
         elif current:
             if len(current) > 1:
                 runs.append(current)
@@ -113,7 +118,7 @@ def basemap_url(width: int, height: int) -> str:
     """WMS request for the chart window. Declared in `data/registry.py`."""
     return (
         "https://tiles.maps.eox.at/wms?service=WMS&version=1.1.1&request=GetMap"
-        "&layers=s2cloudless-2020"
+        "&layers=s2cloudless-2025"
         f"&bbox={BOUNDS['min_lon']},{BOUNDS['min_lat']},"
         f"{BOUNDS['max_lon']},{BOUNDS['max_lat']}"
         f"&width={width}&height={height}&srs=EPSG:4326&format=image/jpeg"
@@ -181,6 +186,11 @@ def build_land_mask() -> tuple[int, int, float]:
 
 
 def build() -> dict:
+    # Imported lazily, for the same reason Pillow and numpy are below: this
+    # module's window and projection are imported by `data/build_seamarks.py`,
+    # which places points in the chart and has no use for a shapefile reader.
+    import shapefile
+
     if not SHAPEFILE.exists():
         raise FileNotFoundError(
             f"{SHAPEFILE} not found. Fetch it with: "
@@ -226,15 +236,15 @@ def build() -> dict:
                 "name": "Iloilo City",
                 "lat": ILOILO_PORT[0],
                 "lon": ILOILO_PORT[1],
-                "x": round(_normalise(ILOILO_PORT[1], ILOILO_PORT[0])[0], 5),
-                "y": round(_normalise(ILOILO_PORT[1], ILOILO_PORT[0])[1], 5),
+                "x": round(normalise(ILOILO_PORT[1], ILOILO_PORT[0])[0], 5),
+                "y": round(normalise(ILOILO_PORT[1], ILOILO_PORT[0])[1], 5),
             },
             {
                 "name": "Jordan, Guimaras",
                 "lat": JORDAN_PORT[0],
                 "lon": JORDAN_PORT[1],
-                "x": round(_normalise(JORDAN_PORT[1], JORDAN_PORT[0])[0], 5),
-                "y": round(_normalise(JORDAN_PORT[1], JORDAN_PORT[0])[1], 5),
+                "x": round(normalise(JORDAN_PORT[1], JORDAN_PORT[0])[0], 5),
+                "y": round(normalise(JORDAN_PORT[1], JORDAN_PORT[0])[1], 5),
             },
         ],
         "coastline": rings,
@@ -264,9 +274,9 @@ def main() -> None:
             "mask_width": mask_w,
             "mask_height": mask_h,
             "land_fraction": round(land_fraction, 4),
-            "source": "Sentinel-2 cloudless 2020, EOX IT Services GmbH",
+            "source": "Sentinel-2 cloudless 2025, EOX IT Services GmbH",
             "attribution": (
-                "Sentinel-2 cloudless by EOX / modified Copernicus Sentinel data 2020 "
+                "Sentinel-2 cloudless by EOX / modified Copernicus Sentinel data 2025 "
                 "(CC BY 4.0)"
             ),
             "caveat": (

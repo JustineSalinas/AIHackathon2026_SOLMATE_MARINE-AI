@@ -15,7 +15,9 @@ dependencies = [
     "sse-starlette>=2.1",
     "httpx>=0.27",
     # Natural-language advisory layer (English + Filipino bridge sentence).
-    # Optional at runtime: without a key the API serves deterministic templates.
+    # Two providers; optional at runtime. Without a key the API serves
+    # deterministic templates, which is a supported state, not a failure.
+    "google-genai>=1.0",
     "anthropic>=0.75",
     # Storage
     "psycopg[binary]>=3.2",

@@ -26,7 +26,7 @@ is named in every case, and every check is reproducible.
 | 7 | PAGASA and OpenWeather marine forecasts | Open-Meteo Marine | Stack |
 | 8 | Sonar hardware for depth | Charted bathymetry intended; **not yet integrated** | Sensing |
 | 9 | AIS receiver for traffic avoidance | Omitted | Sensing |
-| 10 | (not in profile) | Sentinel-2 satellite basemap; Google/Bing/Esri rejected on licence | Data |
+| 10 | (not in profile) | Sentinel-2 basemap + OpenSeaMap aids to navigation (ODbL); Google/Bing/Esri rejected on licence, twice | Data |
 | 11 | Docker for edge deployment | Container at deploy; not used locally | Minor |
 | 12 | Autoencoder + IsolationForest for Phase 1 anomaly detection | PCA linear autoencoder + robust z-score ensemble, pure numpy | **Modelling** |
 
@@ -218,6 +218,36 @@ re-hosting imagery in another application; a screenshot of a web map is neither
 licensed nor attributable. The brief grades "use only licensed or public
 datasets", so a Google Maps capture is a scoring risk before it is anything
 else. An earlier prototype used exactly that and it was removed.
+
+**This decision has had to be made twice.** A later parallel prototype
+reintroduced `mt1.google.com/vt` satellite and roadmap tiles together with an
+Esri ocean-reference layer, crediting "© Google Maps" on the map itself. Those
+tiles are not the Maps Platform API: there is no key, no billing account and no
+accepted terms behind that endpoint. The decision is unchanged and is recorded
+here a second time so it stops being re-litigated.
+
+**What the imagery was actually wanted for, we now have licence-clean.** The
+attraction of the commercial tiles was that they show a *chart* — aids to
+navigation, not just a photograph. That is now supplied by
+**OpenSeaMap** (`openseamap-seamarks`): charted lights, beacons and harbour
+features tagged by OpenStreetMap contributors under **ODbL 1.0**, attributed on
+screen. Ten marks fall inside the chart window and eight are lit, including the
+red and green lights marking the Iloilo jetty channel the demo departs through
+and the red light on Jordan Wharf where it arrives. Each carries its real
+character, colour and period, so the display flashes them at their charted
+rhythm and letters the notation beside them — `Fl G 5s`, `Fl R 5s`, `Fl(3) W 6s`.
+
+It is fetched **once at build time** by `python -m data.build_seamarks` and
+committed as a 2.9 kB extract. OpenSeaMap does publish a raster tile overlay,
+and using it live would have been less code; it was not used, because
+`apps/bridge/lib/render-chart.ts` guarantees that nothing on the chart is
+fetched from a third party at runtime, and that guarantee is what makes the
+licensing answer a single sentence. It also means there is no tile server to
+fail during the live demo.
+
+Caveat, stated on the display and in [`DATA.md`](DATA.md): OpenSeaMap is
+crowdsourced, not a hydrographic survey. Absence of a mark means none is mapped,
+not that the water is clear.
 
 The same imagery does double duty: `data/build_chart.py` classifies it into a
 land/water mask, and the helm view ray-casts that mask to build its horizon. So

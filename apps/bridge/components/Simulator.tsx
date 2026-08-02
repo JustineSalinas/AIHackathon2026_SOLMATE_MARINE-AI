@@ -27,17 +27,20 @@ import type {
   MaintenanceRequest,
   RouteRequest,
   SafetyRequest,
+  TelemetryFrame,
   VoyageRecord,
 } from "@/lib/contracts";
 import { fetchOpenMeteo } from "@/lib/environment";
 import type { LocalConditions } from "@/lib/environment";
 import { toVesselInput, type VesselSpec } from "@/lib/vessel";
 import { relativeBearing } from "@/lib/nautical";
-import { drawChart } from "@/lib/render-chart";
+import { drawChart, type MapStyle } from "@/lib/render-chart";
 import { HELM_FOV_DEG, drawHelm, vesselMotion } from "@/lib/render-helm";
 import { drawChase } from "@/lib/render-chase";
 import { type LandMask, horizonProfile, loadLandMask } from "@/lib/landmask";
+import { loadSeamarks, type Seamark } from "@/lib/seamarks";
 import { WEATHER } from "@/lib/environment";
+import EngineXRay from "./EngineXRay";
 import {
   type ChartData,
   type PovMode,
@@ -103,6 +106,14 @@ export interface Snapshot {
   api: SimState["api"];
   routePlan: SimState["routePlan"];
   health: Omit<SimState["health"], "frames"> & { frameCount: number };
+  /** The rolling engine-frame window, copied.
+   *
+   *  Excluded from the snapshot originally, and for a good reason: the live
+   *  array is mutated in place, so handing React the reference would give it a
+   *  value that changes underneath a render. A copy at the 200 ms snapshot rate
+   *  is ~120 objects five times a second, which is nothing, and it is what lets
+   *  the X-ray draw a trend and export the log. */
+  frames: TelemetryFrame[];
   safety: SimState["safety"];
   forecast: SimState["forecast"];
   log: SimState["log"];
@@ -124,6 +135,10 @@ export default function Simulator() {
   const dragRef = useRef<0 | 1 | null>(null);
   const basemapRef = useRef<HTMLImageElement | null>(null);
   const landMaskRef = useRef<LandMask | null>(null);
+  // A ref, like the basemap and mask above, for the same reason: these are
+  // chart assets that arrive after the first paint and are read by the draw
+  // loop, not values React renders.
+  const seamarksRef = useRef<Seamark[]>([]);
   /** Tracks the arrival edge so a completed crossing is recorded once, not on
    *  every frame the vessel spends sitting at the destination. */
   const loggedArrivalRef = useRef(false);
@@ -135,6 +150,18 @@ export default function Simulator() {
   // less width to spend than the machine it was built on.
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
+  const [xrayOpen, setXrayOpen] = useState(false);
+  const [mapStyle, setMapStyle] = useState<MapStyle>("satellite");
+  // The draw loop runs off requestAnimationFrame and reads this every frame,
+  // so it cannot depend on a value captured in the effect's closure -- the
+  // style would change in the button and never in the chart. Same reason the
+  // vessel lives in a ref: React state is for what is rendered, refs are for
+  // what the 60fps loop reads.
+  const mapStyleRef = useRef<MapStyle>("satellite");
+  const chooseMapStyle = useCallback((style: MapStyle) => {
+    mapStyleRef.current = style;
+    setMapStyle(style);
+  }, []);
 
   // --- chart geometry ------------------------------------------------------
 
@@ -171,6 +198,20 @@ export default function Simulator() {
           });
           addLog(next, `Basemap: ${chart.basemap.source}.`);
         }
+
+        // Charted aids to navigation, optional in the same way the basemap is:
+        // without them the chart draws its coastline and no marks, which is a
+        // poorer chart rather than a broken one.
+        void loadSeamarks().then((seamarks) => {
+          if (cancelled || !seamarks) return;
+          seamarksRef.current = seamarks.marks;
+          const lit = seamarks.marks.filter((mark) => mark.light).length;
+          addLog(
+            stateRef.current,
+            `Aids to navigation: ${seamarks.marks.length} charted, ${lit} lit ` +
+              `— ${seamarks.source} (${seamarks.licence}), fetched ${seamarks.fetched}.`,
+          );
+        });
         addLog(
           next,
           chart
@@ -619,6 +660,10 @@ export default function Simulator() {
             height: state.height,
             basemap: basemapRef.current,
             coastline: state.coastline,
+            seamarks: seamarksRef.current,
+            // Real elapsed time, not the simulated clock: a light's period is
+            // counted against a watch, and time compression would strobe it.
+            clockMs: now,
             baseline: state.baseline,
             route: state.route,
             ports: state.ports,
@@ -633,6 +678,7 @@ export default function Simulator() {
             waveHeightM: local.wave_height_m ?? 0,
             gloom: preset.gloom,
             view: state.pov,
+            style: mapStyleRef.current,
             running: state.running,
             diverted: state.diverted,
           });
@@ -827,6 +873,7 @@ export default function Simulator() {
             value={snapshot?.timeScale ?? 20}
             onChange={(v) => mutate((state) => (state.timeScale = v))}
           />
+          <MapStyleSwitch value={mapStyle} onChange={chooseMapStyle} />
           <PovSwitch
             value={snapshot?.pov ?? "north-up"}
             onChange={(pov) => mutate((state) => (state.pov = pov))}
@@ -837,6 +884,15 @@ export default function Simulator() {
             className="rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-40"
           >
             Reverse
+          </button>
+          {/* Deep inspection, deliberately behind a click. The captain's screen
+              stays at three zones; this is for the engineer at the dock. */}
+          <button
+            onClick={() => setXrayOpen(true)}
+            title="Engine telemetry and diagnostics"
+            className="rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-800"
+          >
+            Engine
           </button>
           <button
             onClick={toggleVoyage}
@@ -907,11 +963,12 @@ export default function Simulator() {
             </div>
           )}
 
-          {/* CC BY 4.0 requires attribution, so this is a licence condition
-              rather than a courtesy. It stays on screen in every view. */}
+          {/* CC BY 4.0 and ODbL both require attribution, so this is a licence
+              condition rather than a courtesy. It stays on screen in every view. */}
           <p className="absolute bottom-2 left-3 right-3 max-w-[46rem] text-[10px] leading-snug text-slate-500">
-            Imagery: Sentinel-2 cloudless by EOX &mdash; modified Copernicus Sentinel data 2020
-            (CC BY 4.0). Coastline: Natural Earth (public domain). Forecast: Open-Meteo
+            Imagery: Sentinel-2 cloudless by EOX &mdash; modified Copernicus Sentinel data 2025
+            (CC BY 4.0). Coastline: Natural Earth (public domain). Aids to navigation: &copy;
+            OpenStreetMap contributors via OpenSeaMap (ODbL). Forecast: Open-Meteo
             (CC BY 4.0). Not for navigation. Simulated telemetry &mdash; no hardware.
           </p>
         </section>
@@ -926,6 +983,8 @@ export default function Simulator() {
           </div>
         </aside>
       </main>
+
+      {xrayOpen && <EngineXRay snapshot={snapshot} onClose={() => setXrayOpen(false)} />}
     </div>
   );
 }
@@ -982,6 +1041,51 @@ function PanelIcon({ side }: { side: "left" | "right" }) {
         strokeWidth="1.2"
       />
     </svg>
+  );
+}
+
+/**
+ * Satellite, muted, or drawn chart.
+ *
+ * Every option renders from the three sources already in the repository -- one
+ * Sentinel-2 composite, one Natural Earth coastline, and one OpenSeaMap seamark
+ * extract. No option fetches a tile from a third party, which is the whole
+ * reason this control is safe to ship: `docs/DEVIATIONS.md` section 10 records
+ * that Google, Bing and Esri tiles were considered and rejected because their
+ * terms forbid re-hosting, and the brief grades licensing. OpenSeaMap is the
+ * licence-clean way to get what those tiles were wanted for.
+ */
+function MapStyleSwitch({
+  value,
+  onChange,
+}: {
+  value: MapStyle;
+  onChange: (style: MapStyle) => void;
+}) {
+  const options: { id: MapStyle; label: string; hint: string }[] = [
+    { id: "default", label: "Default", hint: "Imagery pushed back, drawn geometry leading" },
+    { id: "satellite", label: "Satellite", hint: "Sentinel-2 cloudless 2025 (EOX), CC BY 4.0" },
+    {
+      id: "nautical",
+      label: "Nautical",
+      hint: "Drawn chart only, no photograph — charted lights from OpenSeaMap (ODbL)",
+    },
+  ];
+  return (
+    <div className="flex rounded border border-slate-700 p-0.5">
+      {options.map((option) => (
+        <button
+          key={option.id}
+          title={option.hint}
+          onClick={() => onChange(option.id)}
+          className={`rounded px-2.5 py-1 text-xs ${
+            value === option.id ? "bg-slate-700 text-white" : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -1075,6 +1179,7 @@ function buildSnapshot(state: SimState): Snapshot {
       nextFrameAtMs: state.health.nextFrameAtMs,
       frameCount: state.health.frames.length,
     },
+    frames: state.health.frames.slice(),
     safety: { ...state.safety },
     forecast: { ...state.forecast },
     log: state.log.slice(0, 24),

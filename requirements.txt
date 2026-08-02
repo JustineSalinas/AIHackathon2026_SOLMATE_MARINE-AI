@@ -20,10 +20,16 @@ pydantic>=2.9
 numpy>=1.26
 onnxruntime>=1.19
 
-# Natural-language advisory layer. Pure Python over httpx -- a few MB, not a
-# framework, and it does not move the 85 MB serving figure above in any way a
-# reader would notice. It is listed here rather than kept out of the serving
-# image because the sentence the captain reads is part of the product, and
-# because the layer is written to no-op without a key: no ANTHROPIC_API_KEY,
-# no import cost that matters, deterministic templates on the display.
+# Natural-language advisory layer. Two providers, because the guard that makes
+# this layer safe is provider-agnostic and we would rather demonstrate that than
+# assert it: Google is the default (a free tier a judge can reproduce without a
+# card), Anthropic is the fallback for a rate-limited demo.
+#
+# Both are pure-Python HTTP clients, not frameworks, and neither moves the 85 MB
+# serving figure above in a way a reader would notice. They are listed here
+# rather than kept out of the serving image because the sentence the captain
+# reads is part of the product, and because the layer is written to no-op
+# without a key: no key, no import cost that matters, deterministic templates on
+# the display.
+google-genai>=1.0
 anthropic>=0.75

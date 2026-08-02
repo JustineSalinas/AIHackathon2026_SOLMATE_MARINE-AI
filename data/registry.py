@@ -178,13 +178,13 @@ REGISTRY: dict[str, Dataset] = {
         name="Sentinel-2 cloudless (EOX) — Iloilo Strait basemap",
         url=(
             "https://tiles.maps.eox.at/wms?service=WMS&version=1.1.1&request=GetMap"
-            "&layers=s2cloudless-2020&bbox=122.46,10.58,122.72,10.78"
+            "&layers=s2cloudless-2025&bbox=122.46,10.58,122.72,10.78"
             "&width=1400&height=1077&srs=EPSG:4326&format=image/jpeg"
         ),
-        licence="CC BY 4.0 (EOX IT Services GmbH; modified Copernicus Sentinel data 2020)",
+        licence="CC BY 4.0 (EOX IT Services GmbH; modified Copernicus Sentinel data 2025)",
         citation=(
-            "Sentinel-2 cloudless (2020) by EOX IT Services GmbH, https://s2maps.eu. "
-            "Contains modified Copernicus Sentinel data 2020. Licensed CC BY 4.0."
+            "Sentinel-2 cloudless (2025) by EOX IT Services GmbH, https://s2maps.eu. "
+            "Contains modified Copernicus Sentinel data 2025. Licensed CC BY 4.0."
         ),
         purpose=(
             "Real satellite basemap for the bridge display, and the source of the "
@@ -201,6 +201,41 @@ REGISTRY: dict[str, Dataset] = {
             "Google/Bing/Esri satellite tiles were considered and REJECTED: their terms "
             "forbid reuse outside their own APIs, and the submission is graded on using "
             "only licensed or public data.",
+        ],
+    ),
+    "openseamap-seamarks": Dataset(
+        key="openseamap-seamarks",
+        name="OpenSeaMap aids to navigation (OpenStreetMap seamark tags)",
+        url="https://overpass-api.de/api/interpreter",
+        licence="ODbL 1.0 (OpenStreetMap contributors)",
+        citation=(
+            "Aids to navigation from OpenSeaMap / OpenStreetMap contributors, "
+            "https://www.openseamap.org. Data licensed under the Open Database "
+            "License (ODbL) 1.0, https://www.openstreetmap.org/copyright."
+        ),
+        purpose=(
+            "Charted lights, beacons and harbour features inside the Iloilo Strait "
+            "chart window. Turns the display's Nautical style from a coastline "
+            "outline into a chart that shows the aids a captain actually steers by."
+        ),
+        caveats=[
+            "Fetched by data/build_seamarks.py through the Overpass API, not "
+            "data/download.py -- the request is a QUERY over a bounding box rather "
+            "than a single static file, which the generic fetcher does not model. "
+            "Same shape as the two Open-Meteo entries above.",
+            "OpenSeaMap is CROWDSOURCED, not a hydrographic office. It is not a "
+            "Notice to Mariners feed and carries no survey guarantee: a light may "
+            "have been changed, moved or discontinued since it was last edited. "
+            "Several marks in this window cite UK Admiralty notices from 2016. "
+            "Correct for showing where the aids are; not a substitute for an "
+            "official chart, and the display says 'Not for navigation' on screen.",
+            "ATTRIBUTION IS REQUIRED under ODbL and is rendered on the display. "
+            "This is the licence-clean answer to the same need Google/Bing/Esri "
+            "tiles would have served -- see the sentinel2-cloudless caveats and "
+            "docs/DEVIATIONS.md section 10 for why those were rejected.",
+            "COVERAGE IS SPARSE AND THAT IS THE HONEST STATE: 10 features in the "
+            "0.2 deg x 0.26 deg window as fetched 2026-08-01. Absence of a mark "
+            "here is absence of a mapped mark, NOT evidence of clear water.",
         ],
     ),
     "natural-earth-coastline": Dataset(

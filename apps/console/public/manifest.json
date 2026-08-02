@@ -1,0 +1,16 @@
+{
+  "name": "MARINE-AI",
+  "short_name": "MARINE-AI",
+  "description": "Marine navigation system with GPS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#f97316",
+  "icons": [
+    {
+      "src": "/tile.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

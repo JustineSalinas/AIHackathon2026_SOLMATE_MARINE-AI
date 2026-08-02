@@ -35,6 +35,12 @@ node_modules/
 .next/
 out/
 .turbo/
+# Console build output. `public/routing.wasm` is generated from
+# apps/console/assembly/index.ts by `npm run build:wasm`, so it is a build
+# artifact like any other -- committing it would let the binary drift from the
+# source it was compiled from.
+/apps/console/dist/
+/apps/console/public/routing.wasm
 
 # Env — never commit keys. Public repo.
 .env

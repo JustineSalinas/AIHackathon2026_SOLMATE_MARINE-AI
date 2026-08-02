@@ -34,9 +34,24 @@ def _clean_cache():
 
 @pytest.fixture
 def claude_configured(monkeypatch):
-    """A key that looks real enough to enable the layer and cannot be used."""
+    """A key that looks real enough to enable the layer and cannot be used.
+
+    `GOOGLE_API_KEY` is cleared as well: provider selection prefers Google, so a
+    developer with a real Google key exported would otherwise silently route
+    these tests down the other provider's path.
+    """
     monkeypatch.delenv("MARINE_AI_ADVISORY_DISABLED", raising=False)
+    monkeypatch.setenv("GOOGLE_API_KEY", "")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-not-a-real-key")
+    monkeypatch.setenv("MARINE_AI_ADVISORY_BLOCKING", "1")
+
+
+@pytest.fixture
+def gemini_configured(monkeypatch):
+    """The same, for the Google path."""
+    monkeypatch.delenv("MARINE_AI_ADVISORY_DISABLED", raising=False)
+    monkeypatch.setenv("GOOGLE_API_KEY", "not-a-real-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     monkeypatch.setenv("MARINE_AI_ADVISORY_BLOCKING", "1")
 
 
@@ -155,7 +170,7 @@ async def test_no_key_means_no_client_is_ever_constructed(monkeypatch):
         called = True
         return None
 
-    monkeypatch.setattr(phraser, "_ask_claude", _boom)
+    monkeypatch.setattr(phraser, "_ask_model", _boom)
     await phrase(kind="throttle", template_en=TEMPLATE_EN, template_fil=TEMPLATE_FIL)
     assert not called
 
@@ -164,7 +179,7 @@ async def test_an_accepted_rewrite_is_labelled_claude(monkeypatch, claude_config
     async def _rewrite(kind, en, fil):
         return Phrasing("Easing to 1650 RPM saves 2.1 L/h, about PHP 143 an hour.", fil, "claude")
 
-    monkeypatch.setattr(phraser, "_ask_claude", _rewrite)
+    monkeypatch.setattr(phraser, "_ask_model", _rewrite)
     result = await phrase(kind="throttle", template_en=TEMPLATE_EN, template_fil=TEMPLATE_FIL)
     assert result.source == SOURCE_CLAUDE
     assert "Easing" in result.en
@@ -176,7 +191,7 @@ async def test_a_rejected_rewrite_degrades_to_the_template(monkeypatch, claude_c
     async def _rejected(kind, en, fil):
         return None
 
-    monkeypatch.setattr(phraser, "_ask_claude", _rejected)
+    monkeypatch.setattr(phraser, "_ask_model", _rejected)
     result = await phrase(kind="throttle", template_en=TEMPLATE_EN, template_fil=TEMPLATE_FIL)
     assert result == Phrasing(TEMPLATE_EN, TEMPLATE_FIL, SOURCE_TEMPLATE)
 
@@ -195,7 +210,7 @@ async def test_the_same_decision_is_only_paid_for_once(monkeypatch, claude_confi
         calls += 1
         return Phrasing("Easing to 1650 RPM saves 2.1 L/h, about PHP 143 an hour.", fil, "claude")
 
-    monkeypatch.setattr(phraser, "_ask_claude", _count)
+    monkeypatch.setattr(phraser, "_ask_model", _count)
     for _ in range(5):
         result = await phrase(kind="throttle", template_en=TEMPLATE_EN, template_fil=TEMPLATE_FIL)
     assert calls == 1
@@ -210,7 +225,7 @@ async def test_a_new_decision_is_a_new_sentence(monkeypatch, claude_configured):
         seen.append(en)
         return Phrasing(en, fil, "claude")
 
-    monkeypatch.setattr(phraser, "_ask_claude", _record)
+    monkeypatch.setattr(phraser, "_ask_model", _record)
     await phrase(kind="throttle", template_en=TEMPLATE_EN, template_fil=TEMPLATE_FIL)
     await phrase(kind="throttle", template_en="1700 RPM meets the schedule.", template_fil="x")
     assert len(seen) == 2
@@ -232,7 +247,7 @@ async def test_non_blocking_mode_never_makes_the_display_wait(monkeypatch):
         await asyncio.sleep(0.05)
         return Phrasing("Easing to 1650 RPM saves 2.1 L/h, about PHP 143 an hour.", fil, "claude")
 
-    monkeypatch.setattr(phraser, "_ask_claude", _slow)
+    monkeypatch.setattr(phraser, "_ask_model", _slow)
 
     first = await phrase(kind="throttle", template_en=TEMPLATE_EN, template_fil=TEMPLATE_FIL)
     assert first.source == SOURCE_TEMPLATE
@@ -256,7 +271,7 @@ async def test_a_slow_call_is_not_asked_for_twice(monkeypatch):
         await asyncio.sleep(0.05)
         return Phrasing(en, fil, "claude")
 
-    monkeypatch.setattr(phraser, "_ask_claude", _slow)
+    monkeypatch.setattr(phraser, "_ask_model", _slow)
     for _ in range(9):
         await phrase(kind="throttle", template_en=TEMPLATE_EN, template_fil=TEMPLATE_FIL)
         await asyncio.sleep(0.002)
@@ -365,6 +380,129 @@ async def test_a_refusal_returns_none(monkeypatch, claude_configured):
     assert await phraser._ask_claude("throttle", TEMPLATE_EN, TEMPLATE_FIL) is None
 
 
+# --- the other provider ------------------------------------------------------
+#
+# The point of these is not that Google works. It is that the guard does not
+# care which provider answered: the same rewrite is accepted and the same
+# violation is rejected, through a completely different SDK and wire format.
+# That is what makes "swapping the model cannot weaken the guarantee" a fact
+# about this code rather than a claim about a vendor.
+
+
+def _fake_google(monkeypatch, *, text=None, error=None):
+    import sys
+    import types as pytypes
+
+    class _Models:
+        async def generate_content(self, **kwargs):
+            _Models.last_kwargs = kwargs
+            if error is not None:
+                raise error
+            return pytypes.SimpleNamespace(text=text)
+
+    class _Client:
+        def __init__(self, **kwargs):
+            self.aio = pytypes.SimpleNamespace(models = _Models())
+
+    genai = pytypes.ModuleType("google.genai")
+    genai.Client = _Client
+    gtypes = pytypes.ModuleType("google.genai.types")
+    gtypes.HttpOptions = lambda **kw: kw
+    gtypes.ThinkingConfig = lambda **kw: kw
+    gtypes.GenerateContentConfig = lambda **kw: kw
+    genai.types = gtypes
+    google = pytypes.ModuleType("google")
+    google.genai = genai
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.genai", genai)
+    monkeypatch.setitem(sys.modules, "google.genai.types", gtypes)
+    return _Models
+
+
+async def test_gemini_is_selected_when_its_key_is_present(gemini_configured):
+    assert phraser.provider() == phraser.SOURCE_GEMINI
+
+
+async def test_a_forced_provider_overrides_the_keys(monkeypatch, gemini_configured):
+    """So the two can be compared on the same sentence, especially the Filipino."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-not-a-real-key")
+    monkeypatch.setenv("MARINE_AI_ADVISORY_PROVIDER", "claude")
+    assert phraser.provider() == phraser.SOURCE_CLAUDE
+
+
+async def test_a_faithful_gemini_rewrite_is_labelled_gemini(monkeypatch, gemini_configured):
+    body = (
+        '{"en": "Easing to 1650 RPM saves 2.1 L/h, about PHP 143 an hour.",'
+        ' "fil": "Sa 1650 RPM, tipid ng 2.1 L/h — mga PHP 143 kada oras."}'
+    )
+    models = _fake_google(monkeypatch, text=body)
+
+    result = await phraser._ask_model("throttle", TEMPLATE_EN, TEMPLATE_FIL)
+
+    assert result is not None and result.source == phraser.SOURCE_GEMINI
+    assert result.is_model and not result.is_claude
+    # Same rule as the other provider: the decision travels as a finished
+    # sentence, never as state the model could re-derive differently.
+    assert TEMPLATE_EN in models.last_kwargs["contents"]
+    assert TEMPLATE_FIL in models.last_kwargs["contents"]
+
+
+async def test_the_guard_rejects_an_imperative_from_gemini_too(monkeypatch, gemini_configured):
+    body = (
+        '{"en": "Reduce to 1650 RPM; saves 2.1 L/h — PHP 143 per hour.",'
+        ' "fil": "Sa 1650 RPM, tipid ng 2.1 L/h — mga PHP 143 kada oras."}'
+    )
+    _fake_google(monkeypatch, text=body)
+    assert await phraser._ask_model("throttle", TEMPLATE_EN, TEMPLATE_FIL) is None
+
+
+async def test_a_rate_limit_is_an_ordinary_template_frame(monkeypatch, gemini_configured):
+    """The free tier's most likely failure, and it costs the display nothing."""
+    _fake_google(monkeypatch, error=RuntimeError("429 RESOURCE_EXHAUSTED"))
+    assert await phraser._ask_model("throttle", TEMPLATE_EN, TEMPLATE_FIL) is None
+
+
+async def test_the_transport_deadline_respects_googles_floor(monkeypatch, gemini_configured):
+    """Our 6s timeout is illegal to Google, and sending it fails *every* call.
+
+    Google rejects a client deadline under 10s with a 400 before it looks at the
+    request. Passing `MARINE_AI_ADVISORY_TIMEOUT_S` straight through therefore
+    broke the whole integration while looking exactly like a working one --
+    templates on screen, no crash, no error the display could show. The
+    transport gets a deadline Google accepts; our own timeout is enforced
+    separately, in `asyncio.wait_for`.
+    """
+    captured: dict = {}
+
+    class _Client:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            self.aio = None
+
+    import sys
+    import types as pytypes
+
+    genai = pytypes.ModuleType("google.genai")
+    genai.Client = _Client
+    gtypes = pytypes.ModuleType("google.genai.types")
+    gtypes.HttpOptions = lambda **kw: kw
+    gtypes.ThinkingConfig = lambda **kw: kw
+    gtypes.GenerateContentConfig = lambda **kw: pytypes.SimpleNamespace(**kw)
+    genai.types = gtypes
+    google = pytypes.ModuleType("google")
+    google.genai = genai
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.genai", genai)
+    monkeypatch.setitem(sys.modules, "google.genai.types", gtypes)
+
+    monkeypatch.setenv("MARINE_AI_ADVISORY_TIMEOUT_S", "6")
+    # `self.aio = None` makes the call itself explode; we only care what the
+    # client was constructed with.
+    await phraser._ask_gemini("throttle", TEMPLATE_EN, TEMPLATE_FIL)
+
+    assert captured["http_options"]["timeout"] >= 10_000
+
+
 # --- the wiring -------------------------------------------------------------
 
 
@@ -399,7 +537,7 @@ def test_the_api_labels_a_claude_sentence_on_every_advisory_endpoint(monkeypatch
         # sentence. What is under test here is the wiring, not the prose.
         return Phrasing(en, fil, SOURCE_CLAUDE)
 
-    monkeypatch.setattr(phraser, "_ask_claude", _rewrite)
+    monkeypatch.setattr(phraser, "_ask_model", _rewrite)
 
     with _api_client() as client:
         throttle = client.post("/advise", json={"distance_remaining_nm": 2.0}).json()
@@ -437,7 +575,7 @@ def test_the_numbers_on_the_wire_are_the_optimizers_numbers(monkeypatch):
     async def _reword(kind, en, fil):
         return Phrasing(f"At {en.lower()}", fil, SOURCE_CLAUDE)
 
-    monkeypatch.setattr(phraser, "_ask_claude", _reword)
+    monkeypatch.setattr(phraser, "_ask_model", _reword)
 
     with _api_client() as client:
         body = client.post(

@@ -78,11 +78,15 @@ different models. That is enforced by a test, not a promise.
 ## Slide 4 — What is real, and what is declared (HARDWARE DECLARATION)
 
 **On slide:**
-- **No physical hardware in this build. Declared, not hidden.**
+- **No retrofit hardware in this build. Declared, not hidden.**
 - Every telemetry frame carries `source="simulator"`; the contract has no default
   that could claim otherwise (`packages/contracts/telemetry.py`).
 - The retrofit sensor kit is *specified* (RPM pickup, EGT probe, IMU, GPS, fuel-
   flow meter, weather feed) — the model inputs are exactly what that kit produces.
+- The one real sensor path: the console can optionally read **the browser's own
+  GNSS and orientation**, to place the vessel on the chart at your actual
+  position. It feeds the map only. **No engine, fuel or temperature stream is
+  ever anything but simulated.**
 - The demo drives the real models with simulated telemetry, at real physics.
 
 **Speaker notes:** This is the honesty slide, up front. We are a pre-sprint
