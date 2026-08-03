@@ -35,6 +35,25 @@ dist/
 # includes explicitly. 95 MB saved.
 data/
 
+# THE DEPENDENCY MANIFESTS FOR DEVELOPERS -- deliberately withheld from the
+# builder, and the reason the second deploy still failed at 1050 MB after the
+# upload had already been cut to ~7 MB.
+#
+# The size was never the upload; it was what Vercel INSTALLED. Given a
+# pyproject.toml it installs that project's dependencies, and this project's are
+# the full development set: pandas, pyarrow, scikit-learn, xgboost,
+# psycopg[binary]. That is the 358 MB training stack the ONNX export exists
+# specifically to avoid shipping -- serving needs onnxruntime and numpy, ~85 MB.
+# uv.lock pins the same set, so it has to go too.
+#
+# With both withheld, requirements.txt is the only manifest the builder can see,
+# which is what it was written to be. Nothing breaks: api/index.py puts the repo
+# root on sys.path, so `services`, `packages` and `apps` import as plain
+# directories shipped by vercel.json's includeFiles -- the package is never
+# pip-installed, on Vercel or locally.
+pyproject.toml
+uv.lock
+
 # Secrets. These are set in the Vercel dashboard, never uploaded. Belt and
 # braces alongside .gitignore, because this file governs a different transport.
 .env
