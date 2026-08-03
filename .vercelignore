@@ -1,0 +1,54 @@
+# What NOT to upload to Vercel.
+#
+# `vercel --prod` uploads the working directory, not the Git tree -- so anything
+# in .gitignore has to be repeated here or it ships to the builder anyway. The
+# first deploy attempt failed at 1150 MB against a 500 MB function limit for
+# exactly this reason: a dev machine's .venv, three node_modules trees and a
+# Next.js build output are ~1.6 GB between them, and none of it is needed to
+# answer a request.
+#
+# The serving stack is ~85 MB (onnxruntime + numpy). `vercel.json` states
+# positively what the function does need -- {services,packages,apps/api,models}
+# -- so this file only has to keep the weight off the upload.
+
+# Python virtualenv. 718 MB locally, and the builder installs its own from
+# requirements.txt.
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+
+# Node installs and framework build output. Vercel runs its own install and
+# build for the console and bridge projects; uploading ours only slows it down
+# and risks shipping platform-specific binaries built for Windows.
+node_modules/
+.next/
+dist/
+*.wasm.map
+
+# Datasets, fetched by `python -m data.download`. Training reads them; serving
+# never does -- the API loads models/fuel_degradation.onnx, which vercel.json
+# includes explicitly. 95 MB saved.
+data/
+
+# Secrets. These are set in the Vercel dashboard, never uploaded. Belt and
+# braces alongside .gitignore, because this file governs a different transport.
+.env
+.env.*
+!.env.example
+
+# Documentation, tests and screenshots are not part of any deployment.
+docs/
+tests/
+*.png
+*.jpg
+*.pptx
+
+# Local tooling
+.vscode/
+.idea/
+.playwright-mcp/
