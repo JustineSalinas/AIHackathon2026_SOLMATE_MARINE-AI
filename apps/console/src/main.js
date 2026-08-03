@@ -2678,16 +2678,68 @@ function formatTripFuel(trip) {
     };
 }
 
+/**
+ * One CSV field, RFC 4180. Quoted only when it has to be -- a value carrying a
+ * comma, a quote or a newline would otherwise shift every column to its right
+ * for that row, and the file would still open, just wrong.
+ */
+function csvField(value) {
+    if (value === null || value === undefined) return '';
+    const s = String(value);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
 function downloadTripCSV(trip) {
-    const dataToDownload = trip.data;
+    const dataToDownload = trip && trip.data;
     if (!dataToDownload || dataToDownload.length === 0) return;
-    
-    const keys = Object.keys(dataToDownload[0]);
+
+    // Union of every row's keys, not just the first row's. One code path writes
+    // these today, so the shapes match -- but keyed off row[0] alone, any column
+    // that appeared later in a voyage would be dropped from the export without
+    // a word. Cheap insurance on a file that is the training artifact.
+    const keys = [];
+    const seen = new Set();
+    for (const row of dataToDownload) {
+        for (const k of Object.keys(row)) {
+            if (!seen.has(k)) { seen.add(k); keys.push(k); }
+        }
+    }
+
+    const { litres, measured } = tripFuelLitres(trip);
+    const distNM = Number(trip.distanceNM);
+    const hasFuel = Number.isFinite(litres) && litres > 0;
+    const hasDist = Number.isFinite(distNM) && distNM > 0;
+
+    // The voyage totals, repeated on every row rather than appended as a total
+    // ROW. A trailing summary row makes the file non-rectangular, and every
+    // consumer that means() a column or trains on it then folds the summary in
+    // as though it were another sample -- silently, and in the direction that
+    // flatters the numbers. Constant columns cost bytes and cannot be misread.
+    //
+    // tripTotalFuelL is the AUTHORITATIVE figure and is not the last value of
+    // fuelUsedL. The integral advances every frame; the log samples it at 1Hz of
+    // real time, and a voyage ends between samples -- at 30x that is up to 30
+    // simulated seconds of burn after the final row. fuelUsedL is the sampled
+    // series, this is the closed total, and they are not required to agree.
+    const summary = {
+        tripTotalFuelL: hasFuel ? litres.toFixed(2) : '',
+        tripDistanceNM: hasDist ? distNM.toFixed(3) : '',
+        tripFuelLPerNM: (hasFuel && hasDist) ? (litres / distNM).toFixed(3) : '',
+        // Never leave the provenance to be inferred. "estimated" rows are
+        // reconstructed for voyages that predate fuel metering; treating those
+        // as measurements is exactly the error this column exists to prevent.
+        tripFuelSource: hasFuel ? (measured ? 'measured' : 'estimated') : 'unavailable',
+    };
+    const summaryKeys = Object.keys(summary);
+
     const csvContent = [
-        keys.join(','),
-        ...dataToDownload.map(row => keys.map(k => row[k]).join(','))
-    ].join('\n');
-    
+        keys.concat(summaryKeys).map(csvField).join(','),
+        ...dataToDownload.map(row =>
+            keys.map(k => csvField(row[k]))
+                .concat(summaryKeys.map(k => csvField(summary[k])))
+                .join(',')),
+    ].join('\r\n') + '\r\n';
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -4360,9 +4412,13 @@ function refreshAnalyticsSidebar() {
                         // alone cannot be integrated after the fact: these rows
                         // are 1Hz wall-clock samples of a voyage running at the
                         // sim multiplier, so the elapsed time between them is
-                        // not the elapsed time aboard. Carrying the cumulative
-                        // figure makes the total recoverable from the CSV alone
-                        // -- it is simply the last value in this column.
+                        // not the elapsed time aboard.
+                        // This is a SAMPLE of the integral, not the voyage total.
+                        // The integral advances every frame and the voyage ends
+                        // between samples, so the last value here is short of the
+                        // closed total by whatever burned after it -- at 30x, up
+                        // to 30 simulated seconds' worth. The exported CSV
+                        // carries the authoritative figure as tripTotalFuelL.
                         fuelUsedL: (State.ship.fuelUsedL || 0).toFixed(2),
                         hullStress: stress.toFixed(1)
                     };
