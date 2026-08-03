@@ -13,7 +13,10 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { createApp } from "./app";
+// `.js` for the same reason as `api/index.ts` -- see the note there. This file
+// is bundled by esbuild rather than compiled, so it would survive either
+// spelling; matching them keeps the two entry points from drifting.
+import { createApp } from "./app.js";
 
 /** Not 3000: that port is commonly already taken by another dev server. */
 const PORT = Number(process.env.PORT || 3200);

@@ -17,6 +17,17 @@
  * silently served a stale value before.
  */
 
-import { createApp } from "../app";
+// The `.js` extension is required and is not a typo. This package is
+// `"type": "module"`, so Vercel compiles this file to real ESM and Node's
+// resolver does not guess extensions -- an extensionless `"../app"` deploys
+// cleanly and then fails on every request with:
+//
+//   ERR_MODULE_NOT_FOUND: Cannot find module '/var/task/app'
+//
+// which is invisible locally, because `tsx` (dev) and `esbuild --bundle`
+// (build) both resolve extensionless paths happily. Writing `.js` while the
+// source is `.ts` is the normal TypeScript-ESM spelling: the compiler maps it
+// back to `app.ts`, and the emitted import matches the emitted file.
+import { createApp } from "../app.js";
 
 export default createApp();
