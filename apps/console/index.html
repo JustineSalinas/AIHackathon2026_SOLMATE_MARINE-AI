@@ -225,14 +225,24 @@
                                     <mask id="mai-route-mask" maskUnits="userSpaceOnUse"
                                           x="0" y="-10" width="380" height="72">
                                         <path class="splash-route-reveal"
-                                              d="M36 28C120 50 244 52 352 22"
+                                              d="M48 26C126 48 246 48 340 18"
                                               stroke="#fff" stroke-width="24" fill="none"
                                               stroke-linecap="round" pathLength="100"/>
                                     </mask>
                                 </defs>
-                                <path d="M36 28C120 50 244 52 352 22"
+                                <!-- pathLength normalises the curve to 100 so the
+                                     dash period can be chosen to DIVIDE it:
+                                     100/14 = 7.142857 puts a dot at 0 and a dot
+                                     exactly at 100. Without that the pattern
+                                     stopped wherever it happened to fall -- up to
+                                     a full period short -- so the course visibly
+                                     gave up ~34px before the dart it is supposed
+                                     to arrive at. The last dot now lands on the
+                                     dart's lower-left corner. -->
+                                <path d="M48 26C126 48 246 48 340 18"
                                       stroke="#f2731c" stroke-width="10" fill="none"
-                                      stroke-linecap="round" stroke-dasharray="0.1 26"
+                                      stroke-linecap="round"
+                                      pathLength="100" stroke-dasharray="0.1 7.042857"
                                       mask="url(#mai-route-mask)"/>
                                 <!-- On the path, not floating above it. The ring
                                      is the departure point, so the first dot has
@@ -406,11 +416,19 @@
             position: relative; z-index: 1;
             display: inline-block;
             width: 0.80em;
-            /* The concept sets the dart well off the E and tight to the I, and
-               the leaning silhouette does the rest: the apex at 77% across the
-               box already pulls the I close optically, so it needs no negative
-               margin to help it. */
-            margin: 0 0 0 0.20em;
+            /* Margins set from the INK, not the box -- a leaning triangle fills
+               nothing like its bounding rectangle, so the box's own numbers are
+               meaningless here.
+               Measured against the rhythm of the word itself: the letter gaps
+               inside MARINE run 6-11px. The dart stands in for the A of "AI",
+               so E->dart should read as a word space and dart->I as a letter
+               gap. The numbers that matter are the MINIMUM clearances, which
+               occur at the baseline where the dart's two lower vertices splay
+               out -- that is where it would read as touching. Both are tuned to
+               6-8px, inside the letters' own range. At mid-height the gaps open
+               up well beyond that, which is unavoidable: the silhouette leans,
+               and the lean is the concept's. */
+            margin: 0 0 0 0.02em;
         }
         /* Roughly twice cap height, per the concept, and overhanging the
            baseline. The dart breaking the cap line on both sides is what stops
@@ -434,17 +452,25 @@
         /* Sized off --mark-w, not absolute rem. These are the lockup's siblings,
            so with the variable scoped to .splash they finally scale WITH the mark
            instead of staying put while it shrinks. */
+        /* Centred under the mark, not flush left with it. The route dips well
+           below the wordline's baseline, so the top margin has to clear the
+           DOTS rather than the letters -- at the old value the lowest dot came
+           within 9px of the strapline's cap line and read as one crowded
+           object. */
         .splash-sub {
             color: #93a0b4;
-            margin-top: calc(var(--mark-w) * 0.075);
+            align-self: center;
+            text-align: center;
+            margin-top: calc(var(--mark-w) * 0.10);
             max-width: calc(var(--mark-w) * 0.72);
             font-size: 0.875rem;
             line-height: 1.375;
         }
         .splash-foot {
+            align-self: center;
             margin-top: calc(var(--mark-w) * 0.068);
             display: flex; flex-direction: column;
-            align-items: flex-start; gap: 0.625rem;
+            align-items: center; gap: 0.625rem;
         }
         .splash-track {
             height: 2px; width: calc(var(--mark-w) * 0.38);
