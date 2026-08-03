@@ -1,0 +1,330 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marine-AI — Mentor &amp; Judge Brief</title>
+<style>
+  :root{
+    --bg:#0b1220; --panel:#111a2b; --panel2:#0e1626; --line:#1e2b42;
+    --ink:#e6edf7; --dim:#93a4bf; --faint:#6b7d99;
+    --advisory:#fb923c; --caution:#fbbf24; --nominal:#34d399; --info:#38bdf8; --critical:#f87171;
+    --mono:ui-monospace,"JetBrains Mono","SFMono-Regular",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:28px}
+  h1{margin:0 0 6px;font-size:30px;letter-spacing:-.02em}
+  .sub{color:var(--dim);font-size:15px}
+  .meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+  .tag{font:600 11.5px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;
+    padding:6px 10px;border-radius:999px;border:1px solid var(--line);color:var(--dim);background:var(--panel2)}
+  .tag.ok{color:var(--nominal);border-color:#14523c;background:#0c2a20}
+  .tag.warn{color:var(--caution);border-color:#5a4413;background:#2a2109}
+
+  h2{margin:40px 0 4px;font-size:21px;letter-spacing:-.01em;
+    border-left:3px solid var(--advisory);padding-left:11px}
+  h2 .n{color:var(--faint);font:600 13px/1 var(--mono);margin-right:8px}
+  .lede{color:var(--dim);margin:0 0 18px;padding-left:14px;font-size:14.5px}
+  h3{margin:26px 0 10px;font-size:16px;color:var(--ink)}
+
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:16px}
+  .card h4{margin:0 0 4px;font-size:14.5px}
+  .card p{margin:0;color:var(--dim);font-size:13.5px;line-height:1.55}
+  .card .k{font:600 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;
+    color:var(--faint);display:block;margin-bottom:7px}
+
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px;display:block;overflow-x:auto}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--faint);font:600 11px/1.4 var(--mono);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+  td.num{font-family:var(--mono);white-space:nowrap}
+  tbody tr:hover{background:#0d1727}
+
+  code{font-family:var(--mono);font-size:.9em;background:var(--panel2);
+    border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:#cbd8ea}
+  .callout{border-left:3px solid var(--info);background:var(--panel2);
+    padding:13px 16px;border-radius:0 9px 9px 0;margin:16px 0;font-size:14.5px;color:var(--dim)}
+  .callout.good{border-color:var(--nominal)}
+  .callout.warn{border-color:var(--caution)}
+  .callout.bad{border-color:var(--critical)}
+  .callout strong{color:var(--ink)}
+  .pill{display:inline-block;font:600 10.5px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;
+    padding:4px 8px;border-radius:5px;margin-right:6px;white-space:nowrap}
+  .p-built{background:#0c2a20;color:var(--nominal);border:1px solid #14523c}
+  .p-partial{background:#2a2109;color:var(--caution);border:1px solid #5a4413}
+  .p-no{background:#2a1414;color:var(--critical);border:1px solid #5a1f1f}
+  ul{margin:8px 0;padding-left:20px;color:var(--dim);font-size:14.5px}
+  li{margin:5px 0}
+  li strong{color:var(--ink)}
+  .q{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:15px 17px;margin:12px 0}
+  .q .ask{font-weight:650;color:var(--ink);margin:0 0 7px;font-size:14.5px}
+  .q .ans{margin:0;color:var(--dim);font-size:14px;line-height:1.6}
+  footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);
+    color:var(--faint);font-size:12.5px}
+  @media print{
+    body{background:#fff;color:#000}
+    .card,.q,.callout{break-inside:avoid}
+    h2{break-after:avoid}
+  }
+</style>
+
+<div class="wrap">
+<header>
+  <h1>Marine-AI — Mentor &amp; Judge Brief</h1>
+  <div class="sub">Team SOLMATE · Blue Economy track · retrofit AI advisory system for Philippine passenger bancas</div>
+  <div class="meta">
+    <span class="tag ok">334 tests passing</span>
+    <span class="tag ok">ruff + tsc clean</span>
+    <span class="tag ok">advisory layer: claude</span>
+    <span class="tag warn">not yet deployed</span>
+    <span class="tag">every figure below verified against running code</span>
+  </div>
+</header>
+
+<div class="callout good">
+<strong>The one sentence.</strong> Three AI modules and an auditable emissions layer on one screen, where
+<strong>the models predict and detect but never decide</strong> — the optimiser picks the RPM, the planner picks
+the track, a deterministic rule table trips the alarms, and a language model only re-words the result.
+That boundary is <em>enforced by a test</em>, not described in a doc.
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="n">01</span>What is built</h2>
+<p class="lede">Status is honest: <span class="pill p-built">built</span> runs today,
+<span class="pill p-partial">partial</span> works with a stated limit,
+<span class="pill p-no">not built</span> is disclosed rather than hidden.</p>
+
+<table>
+<thead><tr><th>Capability</th><th>Method</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td><strong>Speed / throttle optimisation</strong></td>
+    <td>Deterministic sweep over a physics resistance model + published diesel BSFC curve, with an XGBoost wear penalty served as ONNX</td>
+    <td><span class="pill p-built">built</span></td></tr>
+<tr><td><strong>Route optimisation</strong></td>
+    <td>Candidate track sweep, each leg costed through the <em>same</em> throttle optimiser; charted depth and forecast wave height as hard constraints</td>
+    <td><span class="pill p-built">built</span></td></tr>
+<tr><td><strong>Sea-state forecaster</strong></td>
+    <td>Gradient-boosted regression (wind/wave direction) + climatological lookup (magnitudes, current direction), trained on real reanalysis</td>
+    <td><span class="pill p-built">built</span></td></tr>
+<tr><td><strong>Predictive maintenance — Phase 1</strong></td>
+    <td>Ensemble of robust per-stream z-score + PCA linear autoencoder, pure NumPy</td>
+    <td><span class="pill p-built">built</span></td></tr>
+<tr><td><strong>Predictive maintenance — Phase 2 (RUL)</strong></td>
+    <td>Component-level remaining-useful-life</td>
+    <td><span class="pill p-no">not built</span></td></tr>
+<tr><td><strong>Auditable emissions layer</strong></td>
+    <td>Monthly CO₂-avoided report vs the vessel's own prior runs on the same route; CSV export</td>
+    <td><span class="pill p-built">built</span></td></tr>
+<tr><td><strong>Safety cutoffs</strong></td>
+    <td>Five deterministic rules (coolant overtemp, oil pressure low, battery low/high, EGT overtemp). No model, by design</td>
+    <td><span class="pill p-built">built</span></td></tr>
+<tr><td><strong>Natural-language advisory</strong></td>
+    <td>Claude / Gemini re-word the deterministic sentence; guarded and discarded on any drift</td>
+    <td><span class="pill p-built">built</span></td></tr>
+<tr><td><strong>Duty-cycle features</strong></td>
+    <td>Run-hours by load band + severity index — over the <em>scored window</em>, not cumulative lifetime</td>
+    <td><span class="pill p-partial">partial</span></td></tr>
+<tr><td><strong>Per-vessel health baseline</strong></td>
+    <td><code>VesselBaseline.fit()</code> exists and is tested, but startup serves a synthetic baseline</td>
+    <td><span class="pill p-no">not built</span></td></tr>
+</tbody>
+</table>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="n">02</span>Where the AI actually works</h2>
+<p class="lede">Four places real learning happens — and the places it deliberately does not.</p>
+
+<div class="grid">
+  <div class="card"><span class="k">learned</span><h4>Fuel wear model</h4>
+    <p>XGBoost → ONNX. Learns the fuel penalty of a worn engine across 1,326 degradation states.</p></div>
+  <div class="card"><span class="k">learned</span><h4>Sea-state forecaster</h4>
+    <p>9 targets raced against a climatological table on held-out weather. The table won 5, gradient boosting won 4. <em>Both shipped.</em></p></div>
+  <div class="card"><span class="k">learned</span><h4>Anomaly detector</h4>
+    <p>Learns this engine's healthy <em>correlations</em>, so a correlated rise reads differently from a lone drift.</p></div>
+  <div class="card"><span class="k">phrasing only</span><h4>Claude / Gemini</h4>
+    <p>Re-words one sentence. Learns nothing, decides nothing. Rewrite discarded if it alters a number or issues an order.</p></div>
+</div>
+
+<h3>Where a model is forbidden</h3>
+<ul>
+<li><strong>The throttle optimiser</strong> — <code>services/speed/optimizer.py</code> imports exactly two modules: <code>fuel</code> and <code>resistance</code>. No model, no LLM.</li>
+<li><strong>The safety engine</strong> — <code>test_safety_never_imports_a_model</code> reads the module's own source and fails if anyone adds one. The boundary is a test, not a promise.</li>
+<li><strong>The pathfinder</strong> (BAIRRT / A* / D* Lite) is classical search, <em>not</em> machine learning. Defensible as AI in the planning sense — but if asked "what did you train?", the answer is the three above.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="n">03</span>Validation — every number reproducible</h2>
+<p class="lede">Figures come from the committed model cards and live API runs, not from a slide.</p>
+
+<h3>Fuel model — validated on whole held-out wear states</h3>
+<table>
+<thead><tr><th>Model</th><th>Mean error (% of fuel burn)</th><th>Reading</th></tr></thead>
+<tbody>
+<tr><td>Assume every engine is healthy</td><td class="num">5.02%</td><td>the size of the problem</td></tr>
+<tr><td>Linear regression</td><td class="num">0.64%</td><td>the honest baseline</td></tr>
+<tr><td><strong>XGBoost wear model</strong></td><td class="num"><strong>0.09%</strong></td><td>why a tree earns its complexity</td></tr>
+</tbody>
+</table>
+<div class="callout"><strong>The split matters more than the score.</strong> Validation holds out <strong>whole wear
+states</strong> — 332 of 1,326, ~25%. The source is a factorial grid, so a row-wise split puts near-identical
+neighbours on both sides and reports a meaningless number. Both baselines print on every training run, so if the
+tree ever stops earning its place, we would see it.</div>
+
+<h3>Other verified figures</h3>
+<table>
+<thead><tr><th>Claim</th><th>Value</th><th>How it is checked</th></tr></thead>
+<tbody>
+<tr><td>ONNX export fidelity</td><td class="num">1.5 × 10⁻⁶</td><td>Trainer refuses to write a model drifting &gt; 1e-4</td></tr>
+<tr><td>Serving image vs training stack</td><td class="num">85 MB / 358 MB</td><td>Measured; why the API fits a serverless function</td></tr>
+<tr><td>Route ↔ Speed agreement</td><td class="num">1 × 10⁻⁶</td><td><code>test_one_leg_route_agrees_with_the_throttle_optimizer</code></td></tr>
+<tr><td>CO₂ factor</td><td class="num">2.68 kg/L</td><td>Test asserts it matches carbon mass balance — not a tuned constant</td></tr>
+<tr><td>Forecaster training data</td><td class="num">2.5 yrs · 196,272 rows</td><td>9-point grid, 912 days, real Open-Meteo reanalysis</td></tr>
+<tr><td>EGT-excess as wear signal</td><td class="num">r = 0.97–0.997</td><td><strong>at fixed load</strong>; 0.86 pooled — which is why load is the model's second feature</td></tr>
+<tr><td>Load axis resolution</td><td class="num">7 lever positions</td><td>Disclosed as the model's weakest axis</td></tr>
+<tr><td>Test suite</td><td class="num">334 passing</td><td>Python decision path; ruff + tsc clean</td></tr>
+</tbody>
+</table>
+
+<h3>The demo beat worth asking us to run</h3>
+<div class="callout good">
+Hold the coolant gauge at a <strong>constant 87.4 °C</strong> and change only how it got there:
+<br>· reached by a <strong>load-coupled rise</strong> (coolant, exhaust, NOx, vibration all moving together) → <strong>0.30, stays nominal</strong>
+<br>· reached by a <strong>coolant drift alone</strong> → <strong>0.62, flags, names the coolant stream</strong>
+<br>· pushed to 98 °C alone → <strong>0.9998</strong>
+<br><br>Same number on the gauge, opposite verdict. <strong>A threshold detector cannot tell those two apart</strong> —
+that correlation is precisely what the PCA half learned.
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="n">04</span>Data strategy &amp; ethics</h2>
+<p class="lede">Sources, licences, and the biases we chose to disclose rather than wait to be asked about.</p>
+
+<h3>Every dataset, with its licence</h3>
+<table>
+<thead><tr><th>Dataset</th><th>Licence</th><th>Used for</th></tr></thead>
+<tbody>
+<tr><td>UCI CBM (Coraddu et al., 2014)</td><td>CC BY 4.0</td><td>Fuel wear model — <strong>gas turbine as a documented diesel proxy</strong></td></tr>
+<tr><td>Open-Meteo Historical (ERA5)</td><td>CC BY 4.0</td><td>Forecaster — wind targets</td></tr>
+<tr><td>Open-Meteo Marine</td><td>CC BY 4.0</td><td>Forecaster — wave &amp; current targets</td></tr>
+<tr><td>Sentinel-2 cloudless (EOX)</td><td>CC BY 4.0</td><td>Basemap + the land mask the helm view ray-casts</td></tr>
+<tr><td>Natural Earth coastline</td><td>Public domain</td><td>Chart geometry</td></tr>
+<tr><td>OpenSeaMap seamarks</td><td><strong>ODbL 1.0</strong></td><td>Charted lights — fetched at <em>build</em> time, attributed on the chart</td></tr>
+<tr><td>NASA C-MAPSS</td><td>Public domain</td><td>Informs methodology only — <strong>not</strong> imported by the detector</td></tr>
+</tbody>
+</table>
+<p style="color:var(--dim);font-size:14px">No pre-trained third-party model weights ship in this repository.
+Full disclosure incl. every runtime library: <code>docs/THIRD-PARTY.md</code>.</p>
+
+<h3>Bias &amp; representativeness — stated unprompted</h3>
+<div class="callout warn">
+<strong>This project processes no personal data.</strong> Inputs are engine telemetry, vessel geometry and metocean
+forecasts; passenger count enters only as <em>mass in kilograms</em>. There is no demographic attribute to balance
+across — so rather than claim exemption, we disclose the axes that <em>do</em> apply to a marine dataset:
+</div>
+<div class="grid">
+  <div class="card"><span class="k">bias 1 — prime mover</span><h4>Trained on the wrong engine</h4>
+    <p>A 27 MW <strong>gas turbine</strong> advising a ~60 kW <strong>diesel</strong>. Mitigation: only the dimensionless
+    wear penalty transfers. Borrowing the part-load curve would have overstated savings by <strong>~5×, in our own
+    favour</strong> — measured, then rejected.</p></div>
+  <div class="card"><span class="k">bias 2 — geography</span><h4>Has seen one strait</h4>
+    <p>A 9-point grid over ~20 km of the Iloilo Strait. It will <em>not</em> generalise, and the failure is silent
+    because a climatological lookup always returns a number. <code>forecast_source</code> is reported on every response.</p></div>
+  <div class="card"><span class="k">bias 3 — baseline</span><h4>Synthetic, not this vessel</h4>
+    <p>The detector measures deviation from a modelled healthy engine, not the specific one it watches. False-positive
+    rates on a real vessel are <strong>unknown and unclaimed</strong>.</p></div>
+  <div class="card"><span class="k">bias 4 — hardware</span><h4>Nothing physical in the loop</h4>
+    <p>Every frame is simulated and labelled <code>source="simulator"</code> in the contract, which has no default that
+    could claim otherwise.</p></div>
+</div>
+
+<h3>Choices made on licence grounds</h3>
+<ul>
+<li><strong>Google / Bing / Esri tiles — rejected twice.</strong> An earlier build rendered Google satellite tiles credited on screen, which their terms do not permit in that form. Replaced with Sentinel-2 (CC BY 4.0).</li>
+<li><strong>FEMTO/PRONOSTIA — named in our own profile, then not used.</strong> It is 25.6 kHz bench-rig vibration; the retrofit IMU logs at ~1 Hz. Using it would imply a diagnostic capability the sensor cannot deliver.</li>
+<li><strong>AI development tools disclosed.</strong> Claude Code assisted development; contributed commits carry a <code>Co-Authored-By</code> trailer, so the extent is auditable from <code>git log</code> rather than asserted.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="n">05</span>Responsible-AI guarantees, enforced in code</h2>
+<p class="lede">Each of these is a test that fails if someone later "improves" the system past the boundary.</p>
+<table>
+<thead><tr><th>Guarantee</th><th>Enforcement</th></tr></thead>
+<tbody>
+<tr><td>Safety cutoffs never consult a model</td><td><code>test_safety_never_imports_a_model</code> greps the module source</td></tr>
+<tr><td>Route and Speed can never disagree on cost</td><td>One-leg route matches the throttle optimiser to 1e-6</td></tr>
+<tr><td>Phase 1 cannot emit a failure date or component</td><td>Contract validator rejects Phase-2 fields during Phase 1</td></tr>
+<tr><td>Working an engine hard is exposure, not a fault</td><td><code>test_duty_never_moves_the_anomaly_score</code></td></tr>
+<tr><td>The LLM cannot change a number or give an order</td><td>Rewrite checked against the deterministic sentence; discarded on drift</td></tr>
+<tr><td>Every advisory fits the guard</td><td><code>test_every_advisory_branch_fits_the_advisory_guard</code> (180-char limit)</td></tr>
+<tr><td>No frame can claim to be real hardware</td><td><code>source="simulator"</code> has no permissive default</td></tr>
+</tbody>
+</table>
+<div class="callout good"><strong>Degradation is a designed state, not a failure.</strong> No API key, an expired key,
+a rate limit, a timeout, a rejected rewrite — all land on the same path: the deterministic sentence, labelled
+<code>template</code>. <strong>The demo cannot break because of the LLM.</strong></div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="n">06</span>What is <em>not</em> done — read this before asking</h2>
+<p class="lede">Listed here so a reviewer finds it from us rather than by digging. This is the section we most want to be judged on.</p>
+<table>
+<thead><tr><th>Gap</th><th>Consequence, stated plainly</th></tr></thead>
+<tbody>
+<tr><td><strong>No frontend tests at all</strong></td><td>~18,000 lines across two front-ends have no test runner. All 334 tests cover the Python decision path. Every display defect we have found needed a human or a browser. This is our weakest answer and the first thing we would fix.</td></tr>
+<tr><td><strong>Phase 2 RUL not built</strong></td><td>The system says "coolant is drifting", never "the pump fails in 12 days". Compliant with our own phased plan — but say it precisely, because "predictive maintenance" is usually heard as the second thing.</td></tr>
+<tr><td><strong>Per-vessel baseline not fitted</strong></td><td>Detector runs against a synthetic healthy engine. Real-world false-positive rate unknown.</td></tr>
+<tr><td><strong>MPC loop not built</strong></td><td>Route re-plans on events, not continuously.</td></tr>
+<tr><td><strong>MQTT not built</strong></td><td>Telemetry transport is HTTP/JSON.</td></tr>
+<tr><td><strong>GEBCO bathymetry not integrated</strong></td><td>Depth constraint uses analytic bathymetry, not charted soundings.</td></tr>
+<tr><td><strong>AIS omitted</strong></td><td>No traffic avoidance. Contract field reserved.</td></tr>
+<tr><td><strong>Console fetches 10 runtime origins</strong></td><td>The offline claim holds for the bridge chart (build-time fetch, deliberately) but <em>not</em> for the console.</td></tr>
+<tr><td><strong>Route returns zero savings on the demo leg</strong></td><td>Correct, not broken: the trained climatology finds nothing to save on a 2.7 nm hop in calm weather. We present the zero rather than engineer a number.</td></tr>
+</tbody>
+</table>
+
+<!-- ─────────────────────────────────────────── -->
+<h2><span class="n">07</span>Likely questions, answered straight</h2>
+
+<div class="q"><p class="ask">Does the AI decide anything?</p>
+<p class="ans">No. Deterministic code picks the RPM and the track; a rule table trips the alarms. The optimiser imports
+only <code>fuel</code> and <code>resistance</code>. A test fails if a model is ever imported into the safety path.
+<em>The AI proposes, the physics validates, the captain commands.</em></p></div>
+
+<div class="q"><p class="ask">Why not train one end-to-end model?</p>
+<p class="ans">Because no public dataset supports it. Verified by inspection before any model was written: the anchor
+dataset is a factorial grid in which <strong>wind, current, wave height and passenger load do not vary at all</strong> —
+not as weak signals, as constants. A model trained on it and presented as having learned weather would ignore the very
+inputs the product acts on, while reporting confidence about them.</p></div>
+
+<div class="q"><p class="ask">How is the display tested?</p>
+<p class="ans">It isn't. That is the honest answer. 334 tests cover the decision path; the front-ends have no test
+runner, and every display bug we found needed a browser. Adding one is the first post-hackathon task.</p></div>
+
+<div class="q"><p class="ask">A gas turbine for a diesel — isn't that invalid?</p>
+<p class="ans">It is a documented proxy, and we measured the limit rather than assuming it. Only the dimensionless wear
+penalty transfers. The part-load curve explicitly does not: the turbine burns ~7× best-point SFC at 10% load where a
+diesel burns ~1.5×, so borrowing it would have overstated our savings by roughly 5× — in our own favour. Absolute fuel
+level comes from a published diesel BSFC curve instead.</p></div>
+
+<div class="q"><p class="ask">Did you train the Temporal Fusion Transformer your profile promised?</p>
+<p class="ans">No, and the honest answer is better than a yes. A TFT forecasts from recent observed history, and this
+endpoint has none to give it. What trains instead is a position-and-time regression — and even that was not shipped as
+one architecture: nine targets were raced against a climatological lookup table on six months of held-out real weather,
+and the table won five of them. Both halves shipped.</p></div>
+
+<div class="q"><p class="ask">Is any of this running on real hardware?</p>
+<p class="ans">No, and it is declared. Telemetry is simulated and every frame carries <code>source="simulator"</code>
+in the contract, which has no default that could claim otherwise.</p></div>
+
+<div class="q"><p class="ask">What happens when the network fails mid-voyage?</p>
+<p class="ans">The advisory degrades to the deterministic sentence and says so. The weather panel reports
+<strong>NO SIGNAL</strong> and logs that it is advising on default conditions rather than measured weather — it will not
+claim a sync that did not happen. The captain always gets a number; the provenance is always visible.</p></div>
+
+<footer>
+Marine-AI · Team SOLMATE · <code>docs/MENTOR_BRIEF.html</code><br>
+Deeper reading: <code>docs/DEVIATIONS.md</code> (deliberate departures + "Still outstanding") ·
+<code>docs/DATA.md</code> (provenance, cleaning, representativeness) ·
+<code>docs/THIRD-PARTY.md</code> (licences) · <code>models/*.card.json</code> (model cards).
+</footer>
+</div>
