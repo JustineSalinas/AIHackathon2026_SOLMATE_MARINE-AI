@@ -2771,7 +2771,7 @@ function refreshAnalyticsSidebar() {
                 return;
             }
 
-            const maxPax = Math.max(0, parseInt(getSafeVal('inMaxPax', 40), 10) || 0);
+            const maxPax = Math.max(0, parseInt(getSafeVal('inMaxPax', 50), 10) || 0);
             if (paxModalMax) paxModalMax.textContent = maxPax;
             if (inCurrentPax) inCurrentPax.max = maxPax;
             if (inModalEta && mainInEta) inModalEta.value = mainInEta.value || 25;
@@ -3558,8 +3558,8 @@ function refreshAnalyticsSidebar() {
 
         async function extractEngineSpecsAsync(force = false) {
             const engineTypeInput = document.getElementById('inEngineType');
-            const engineType = (engineTypeInput?.value || '4-Stroke Marine Diesel').trim();
-            const mcrHp = getSafeVal('inMCR', 1200);
+            const engineType = (engineTypeInput?.value || '4-Stroke Marine Diesel (inline-6)').trim();
+            const mcrHp = getSafeVal('inMCR', 250);
             const cacheKey = (engineType + '||' + mcrHp).toLowerCase();
 
             // Skip if input has not changed and not forced
@@ -3619,15 +3619,19 @@ function refreshAnalyticsSidebar() {
             }
         }
 
+        // Fallbacks must match the locked spec in index.html section 3. They used to
+        // describe a 35 m / 120 t / 1200 HP coastal ship, so a missing input silently
+        // advised on a different vessel from the one on screen -- the sort of drift
+        // that produces two defensible numbers and no way to tell which is right.
         function getVesselHydrodynamics() {
-            const lbp = getSafeVal('inLBP', 35.0);
-            const breadth = getSafeVal('inBreadth', 8.5);
-            const depth = getSafeVal('inDepth', 3.2);
-            const dwt = getSafeVal('inDWT', 120);
-            const mcrHp = getSafeVal('inMCR', 1200);
-            const engineType = document.getElementById('inEngineType')?.value || '4-Stroke Marine Diesel';
-            const serviceSpeedKts = getSafeVal('inServiceSpeed', 15.0);
-            const hullType = document.getElementById('inHullType')?.value || 'displacement';
+            const lbp = getSafeVal('inLBP', 17.5);
+            const breadth = getSafeVal('inBreadth', 4.2);
+            const depth = getSafeVal('inDepth', 1.8);
+            const dwt = getSafeVal('inDWT', 12);
+            const mcrHp = getSafeVal('inMCR', 250);
+            const engineType = document.getElementById('inEngineType')?.value || '4-Stroke Marine Diesel (inline-6)';
+            const serviceSpeedKts = getSafeVal('inServiceSpeed', 12.0);
+            const hullType = document.getElementById('inHullType')?.value || 'semi';
 
             const draft = Math.min(depth * 0.85, depth * 0.65 + (dwt / 1000));
             const dispTons = dwt * 1.35;
@@ -5143,37 +5147,29 @@ function refreshAnalyticsSidebar() {
             // the resistance model reads it, so changing it must not replan.
             const NON_ROUTING_BOAT_PARAMS = new Set(['MaxPax']);
 
+            // The vessel spec is fixed in index.html section 3 and the inputs are
+            // read-only, so persisting it is not just pointless -- it is the one thing
+            // that can defeat the lock. This function used to assign
+            // `input.value = params[param]`, which bypasses `readonly` entirely: every
+            // visitor who had already opened the console carried the old 35 m / 120 t /
+            // 1200 HP ship in localStorage and would have had it restored straight over
+            // the locked 17.5 m spec, on a URL being handed to judges.
+            //
+            // So: restore nothing, and actively clear the stale keys so a returning
+            // visitor converges on the shipped vessel instead of keeping a private one.
             function loadSavedBoatParams() {
                 try {
-                    const saved = localStorage.getItem('marine_ai_boat_parameters') || localStorage.getItem('navai_boat_parameters');
-                    if (saved) {
-                        const params = JSON.parse(saved);
-                        boatParams.forEach(param => {
-                            const input = document.getElementById('in' + param);
-                            if (input && params[param] !== undefined && params[param] !== null) {
-                                input.value = params[param];
-                            }
-                        });
-                    }
+                    localStorage.removeItem('marine_ai_boat_parameters');
+                    localStorage.removeItem('navai_boat_parameters');
                 } catch (e) {
-                    console.warn('Could not load boat parameters:', e);
+                    console.warn('Could not clear stale boat parameters:', e);
                 }
             }
 
-            function saveBoatParams() {
-                try {
-                    const params = {};
-                    boatParams.forEach(param => {
-                        const input = document.getElementById('in' + param);
-                        if (input) {
-                            params[param] = input.value;
-                        }
-                    });
-                    localStorage.setItem('marine_ai_boat_parameters', JSON.stringify(params));
-                } catch (e) {
-                    console.warn('Could not save boat parameters:', e);
-                }
-            }
+            // Kept as a no-op rather than deleted: it is still wired to input/change/blur
+            // listeners below, which are inert for read-only fields but would throw if
+            // the function vanished. Nothing should re-persist a spec that cannot change.
+            function saveBoatParams() {}
 
             loadSavedBoatParams();
 
@@ -5568,8 +5564,15 @@ function refreshAnalyticsSidebar() {
               steps: [
                 {
                   popover: {
-                    title: 'Welcome to Marine-AI Simulator 🌊',
-                    description: 'Experience a high-precision maritime navigation simulation powered by Neural Spatial AI. This guide will walk you through setting up your first autonomous voyage, avoiding hazards, and monitoring real-time telemetry. Let\'s get started!',
+                    title: 'Welcome to Marine-AI 🌊',
+                    // Said "powered by Neural Spatial AI" until 2026-08-03. There is no
+                    // neural network anywhere in this system: the throttle comes from a
+                    // deterministic sweep over a physics resistance model, the wear
+                    // penalty from a gradient-boosted tree served as ONNX, and the health
+                    // score from a PCA linear autoencoder plus a robust z-score. Claiming
+                    // otherwise on the first screen a judge reads contradicted the one
+                    // argument this project actually rests on.
+                    description: 'A retrofit advisory system for Philippine passenger boats. Physics and trained models compute the fuel, the route and the engine health; the captain decides. This guide walks you through setting up a voyage, placing hazards, and reading the live telemetry.',
                     side: 'center',
                     align: 'center'
                   }
@@ -5656,13 +5659,48 @@ function refreshAnalyticsSidebar() {
                 });
             }
 
-            const hasSeenTutorial = localStorage.getItem('marine_ai_seen_guide_v3');
-            if (!hasSeenTutorial) {
-                setTimeout(() => {
-                    driverObj.drive();
-                    localStorage.setItem('marine_ai_seen_guide_v3', 'true');
-                }, 1000);
+            // Splash -> guide -> dashboard, in that order, every time.
+            //
+            // The splash is markup in index.html and visible by default, so it covers
+            // the page from the first painted frame rather than waiting for this
+            // bundle. Here we only take it down -- after a floor of 1.6s so it reads
+            // as an intro rather than a flash on a fast connection, and after the
+            // fade so the guide never highlights an element behind a curtain.
+            //
+            // The guide itself stays once-per-visitor. A nine-step tour on every load
+            // would be hostile, and the splash is what the "every time" applies to.
+            const SPLASH_MIN_MS = 1600;
+            const SPLASH_FADE_MS = 500;
+
+            function startGuideIfUnseen() {
+                if (localStorage.getItem('marine_ai_seen_guide_v3')) return;
+                driverObj.drive();
+                localStorage.setItem('marine_ai_seen_guide_v3', 'true');
             }
+
+            (function dismissSplashThenGuide() {
+                const splash = document.getElementById('splashScreen');
+                if (!splash) {
+                    startGuideIfUnseen();
+                    return;
+                }
+                const status = document.getElementById('splashStatus');
+                if (status) status.textContent = 'Optimiser ready.';
+
+                const elapsed = performance.now();
+                const wait = Math.max(0, SPLASH_MIN_MS - elapsed);
+
+                setTimeout(() => {
+                    splash.classList.add('opacity-0');
+                    setTimeout(() => {
+                        // `remove`, not `hidden`: nothing behind it should ever be
+                        // covered by a transparent full-screen layer that still eats
+                        // clicks. This has bitten the map before.
+                        splash.remove();
+                        startGuideIfUnseen();
+                    }, SPLASH_FADE_MS);
+                }, wait);
+            })();
 
 
 
