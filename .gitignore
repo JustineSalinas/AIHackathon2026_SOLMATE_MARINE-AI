@@ -63,3 +63,4 @@ Thumbs.db
 # document is open, and the deck is opened constantly during a sprint -- without
 # this one of them eventually gets committed.
 ~$*
+.gstack/
