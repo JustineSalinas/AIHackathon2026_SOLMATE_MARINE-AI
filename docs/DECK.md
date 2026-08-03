@@ -13,10 +13,36 @@
 
 ## Judging weights this deck is built against
 
-**Final (brief p.7):** Technical Soundness 50% · Impact & Feasibility 25% ·
-Presentation 15% · Innovation & Scalability 10%.
-**Semi-final:** Technical Execution 40% · Innovation & Originality 25% ·
-**AI Strategy / Data Integrity / Model Fit 20%** · Ethics/Bias 15%.
+**Updated 2026-08-03 from the on-site orientation slides.** These supersede the
+weights in the brief PDF — Presentation dropped 15% → 10%, Innovation rose
+10% → 15% and is now scored on *impact*, and "Impact & Feasibility" became
+"Feasibility & Scalability" with explicit venture language.
+
+| Criterion | Weight | Scored on |
+|---|---|---|
+| **Technical Soundness** | **50%** | Mentor-assigned. Functional prototype, AI architecture, data ethics, track alignment |
+| Feasibility & Scalability | 25% | Real-world viability: **path to adoption, sustainability as a venture, capacity to scale beyond the prototype** |
+| Innovation & Impact | 15% | Impact on intended beneficiaries, and how compellingly that impact is communicated |
+| Presentation | 10% | Storytelling, live demo execution, Q&A defence |
+
+**Technical Soundness is half the grade and it breaks down further** — this is the
+table to design against, because it is mentor-assigned during Day 1–2 mentoring,
+not at the pitch:
+
+| Sub-criterion | Share of the 50% | Effective weight | Where this deck answers it |
+|---|---|---|---|
+| AI Architecture & Model Fit | 30% | **15%** | Slides 6, 7, 10, 12 |
+| Data Strategy & Ethics | 25% | **12.5%** | Slides 4, 13, 14 + `DATA.md` §Representativeness, `THIRD-PARTY.md` |
+| Local Relevance & Innovation | 25% | **12.5%** | Slides 2, 3, 15 (track alignment = Blue Economy) |
+| Functional Prototype | 20% | **10%** | The live demo + code quality and documentation |
+
+Two consequences worth internalising before rehearsing:
+
+1. **Data Strategy & Ethics alone (12.5%) outweighs Presentation (10%).** The
+   deviations table and the representativeness disclosure are not defensive
+   throat-clearing — they are a bigger scoring surface than the pitch delivery.
+2. **Half the grade is decided before anyone presents.** Get a mentor in front of
+   the running system early on Day 1 and lead with `DEVIATIONS.md`.
 
 Two brief requirements that lose marks if missed and are handled explicitly
 below: **external models must be cited in the deck** (Slide 13), and **hardware
@@ -52,7 +78,8 @@ credible.
 unplanned, and money left on the table for lack of a report they can't produce.
 We did not invent a problem; we instrumented one.
 
-**Serves:** Impact & Feasibility (25%). Ground the pitch in a real operator, the
+**Serves:** Innovation & Impact (15%); Local Relevance (12.5%). Ground the pitch
+in a real operator, the
 captain from [`PRODUCT.md`](../PRODUCT.md).
 
 ---
@@ -71,7 +98,7 @@ fuel model in this system.** Speed, Route and Emissions are all scored by it, so
 the litres a route saves and the litres a throttle saves can never come from two
 different models. That is enforced by a test, not a promise.
 
-**Serves:** Innovation & Scalability; AI Strategy / Model Fit.
+**Serves:** Innovation & Impact; AI Architecture & Model Fit.
 
 ---
 
@@ -113,7 +140,7 @@ buys credibility for every later claim.
 boat actually slows. In the old prototype the weather slider moved the readout
 and never the boat; that bug is now a failing test if it ever returns.
 
-**Serves:** Technical Execution; the live-demo moment.
+**Serves:** Functional Prototype (10% — the working demo); the live-demo moment.
 
 ---
 
@@ -132,7 +159,8 @@ to the 20% "did you pick the right tool" criterion. We split the problem so the
 part we can learn honestly is learned, and the part no dataset supports is
 computed from physics with every coefficient named and per-vessel calibratable.
 
-**Serves:** AI Strategy / Data Integrity / Model Fit (20% semi-final). See
+**Serves:** AI Architecture & Model Fit — 30% of Technical Soundness, so **15% of
+the total grade**, the single largest sub-criterion there is. See
 [`docs/DEVIATIONS.md`](DEVIATIONS.md) §1.
 
 ---
@@ -231,7 +259,7 @@ smaller, and both are why the number is worth anything.
 > **+3.52 kg CO2 avoided**, method `own_prior_route`. Demo it in that order; the
 > first three "no baseline" rows are the point, not a defect.
 
-**Serves:** Impact & Feasibility (the only deliverable aimed at the LGU / MARINA /
+**Serves:** Feasibility & Scalability (the only deliverable aimed at the LGU / MARINA /
 green-finance stakeholder — a third of the problem statement).
 
 ---
@@ -263,7 +291,7 @@ a position-and-time regression, and even that wasn't shipped as one
 architecture: nine targets were raced against a climatological lookup table on
 held-out real weather, and the table won on five of them. Both halves shipped.
 
-**Serves:** Innovation & Scalability; AI Strategy.
+**Serves:** Innovation & Impact; AI Architecture & Model Fit.
 
 > **Build status note (delete before pitch):** the route engine, its constraints,
 > the `POST /route` API and the bridge Route zone that consumes it are built and
@@ -306,7 +334,8 @@ held-out real weather, and the table won on five of them. Both halves shipped.
 looks at the screen for under two seconds, twice a minute, one hand on the
 throttle. Show the four POV modes / helm view here.
 
-**Serves:** Presentation (15%); Impact (usability by a non-engineer captain).
+**Serves:** Presentation (10%); Innovation & Impact (usability by a non-engineer
+captain is the impact claim).
 
 ---
 
@@ -359,7 +388,8 @@ decision path, and we are only in the first one.
 > set the key in the Vercel project before recording the screencast, and check
 > `GET /health` reports `"advisory_layer": "claude"`.
 
-**Serves:** Ethics/Bias (15% semi-final).
+**Serves:** Data Strategy & Ethics — 25% of Technical Soundness, so **12.5% of the
+total**, more than Presentation is worth.
 
 ---
 
@@ -389,7 +419,8 @@ trains anything — the Phase 1 detector learns each vessel's own normal instead
 which is the better fit anyway, since a turbofan's degradation modes are not a
 marine diesel's.
 
-**Serves:** Data Integrity (20% semi-final); the brief's citation requirement.
+**Serves:** Data Strategy & Ethics (12.5% of the total); the brief's citation
+requirement. Full licence disclosure lives in `docs/THIRD-PARTY.md`.
 
 ---
 
@@ -413,23 +444,33 @@ discovering the paper overstated something. This slide is a trust asset.
 
 ---
 
-## Slide 15 — Impact & feasibility
+## Slide 15 — Feasibility & scalability (PATH TO ADOPTION)
 
 **On slide:**
 - **Retrofit, not replacement** — installs on boats already in service; the whole
   addressable fleet is reachable without new hulls.
-- Measured outcomes: litres/nm down, pesos/voyage down, unscheduled downtime
-  converted to scheduled dry-docking, CO₂-avoided evidence produced monthly.
+- **Who pays, and why they say yes:** the kit is bought out of the fuel it saves.
+  The operator's decision is a payback period, not a capital purchase.
 - Three stakeholders, three surfaces: captain (bridge screen), owner/cooperative
-  (savings + emissions report), LGU/MARINA/ESG lenders (exported evidence).
+  (savings + emissions report), LGU/MARINA/ESG lenders (exported evidence) — and
+  the third is what makes this fundable rather than merely useful.
 - Runs as a **serverless function** (85 MB serving image) — cheap to operate,
   same argument for an on-vessel edge unit.
 
-**Speaker notes:** Feasibility is the retrofit story plus the cost story. We're
-not asking an operator to buy a boat; we're asking them to bolt on a sensor kit
-that pays for itself in fuel.
+**Speaker notes:** This criterion is now explicitly about *path to adoption,
+sustainability as a venture, and capacity to scale beyond the prototype* — so
+lead with the business mechanism, not the technology. We're not asking an
+operator to buy a boat; we're asking them to bolt on a sensor kit that pays for
+itself in fuel, and the emissions report gives a cooperative or lender a reason
+to underwrite the kit up front.
 
-**Serves:** Impact & Feasibility (25%); Scalability (10%).
+Be ready for the venture question: who buys the first hundred units, and what
+does the second year look like. The honest framing is a cooperative-level sale —
+one operator with a dozen boats — rather than a hundred individual captains,
+because the emissions evidence has value at the fleet level where an LGU or
+lender is already looking.
+
+**Serves:** Feasibility & Scalability (25%).
 
 ---
 
@@ -449,7 +490,13 @@ that pays for itself in fuel.
 not a wish. The forecaster loads through one function; AIS has a reserved contract
 field; depth has a provider protocol. Scaling is wiring, not rewriting.
 
-**Serves:** Innovation & Scalability (10%).
+Note the scaling limit honestly if asked: the route forecaster is trained on a
+9-point grid over one strait, so a new region is a retraining task on the same
+pipeline — not a code change, but not free either. `DATA.md` §Representativeness
+states this unprompted, which is the better place for a judge to find it than in
+your answer to a hostile question.
+
+**Serves:** Feasibility & Scalability (25%); Innovation & Impact (15%).
 
 ---
 
@@ -488,13 +535,40 @@ the Q&A — the deviations slide means we welcome the hard questions.
 
 ---
 
-## Pre-submission checklist (from the brief)
+## Pre-submission checklist
 
-- [ ] Demo URL is **public** and resolves (Vercel Deployment Protection **OFF**).
-- [ ] Repo URL is **public**, with README setup instructions.
-- [ ] **Video screencast of the AI in action** recorded and public.
+**From the brief:**
+
+- [ ] Demo URL resolves and is reachable by a signed-out visitor (Vercel
+      Deployment Protection **OFF**).
+- [ ] **Video screencast of the AI in action** recorded and shareable.
 - [ ] External models **cited in the deck** (Slide 13). ✔ scaffolded
 - [ ] Hardware use **declared in the deck** (Slide 4). ✔ scaffolded (declared none)
-- [ ] Every number on Slides 6–10 matches the code and `docs/DATA.md`.
+- [ ] Every number on Slides 6–10 matches the code and `docs/DATA.md`. ✔ reconciled
+      2026-08-03
 - [ ] Build-status notes on Slides 8 & 10 resolved to what is actually true at
       sprint time.
+
+**From the on-site orientation slides (2026-08-03) — these are new:**
+
+- [ ] Repository is **private** on GitHub. ✔ done 2026-08-03
+- [ ] Repository named `AIHackathon2026_TeamName_ProjectTitle`.
+- [ ] Organizers added as viewers: **https://github.com/aifesthackathon**
+- [ ] Repository link shared with the organizing team.
+- [ ] **Progressive commits** throughout development — no bulk upload at the end.
+- [ ] README contains all four required sections: project overview and
+      objectives · problem statement and AI-based solution · AI tools, frameworks
+      and datasets used · setup and run instructions. ✔ done 2026-08-03
+- [ ] All data sources declared with metadata (origin, format, purpose,
+      preprocessing). ✔ `docs/DATA.md`
+- [ ] Potential biases disclosed with attempted mitigations.
+      ✔ `docs/DATA.md` §Representativeness and bias
+- [ ] All external resources documented and disclosed.
+      ✔ `docs/THIRD-PARTY.md`
+
+> **The private-vs-public tension is unresolved and needs an organizer's answer.**
+> The orientation slide says create a *private* repository with organizers as
+> viewers; the brief PDF says every submission link must be public or it is
+> immediate disqualification. The most likely reading is that the *development
+> repo* is private and the *demo URL* is public — but "most likely" is not good
+> enough for a disqualification criterion. Ask, and record the answer here.
