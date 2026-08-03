@@ -262,11 +262,14 @@
                                 </label>
                             </div>
                             <div class="flex items-center justify-between text-xs">
-                                <span id="outApiCacheBadge" class="bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono font-semibold">CACHE: READY</span>
+                                <!-- Neutral until a fetch actually resolves. This used to
+                                     open on "CACHE: READY" in nominal green, which asserted
+                                     a warm cache before a single request had been made. -->
+                                <span id="outApiCacheBadge" class="bg-slate-700/60 text-slate-300 px-1.5 py-0.5 rounded font-mono font-semibold" title="No metocean request has resolved yet this session.">AWAITING SYNC</span>
                                 <span id="outApiTile" class="text-slate-400 font-mono text-xs">Grid 10.69°N, 122.56°E</span>
                             </div>
                             <div id="overrideStatusText" class="text-xs text-sky-300 flex items-center justify-between pt-1 border-t border-slate-800">
-                                <span class="truncate mr-1"><i class="fa-solid fa-sync fa-spin mr-1"></i> <span id="outApiLastSync" class="text-white font-semibold">Synced 0s ago</span></span>
+                                <span class="truncate mr-1"><i class="fa-solid fa-sync fa-spin mr-1"></i> <span id="outApiLastSync" class="text-white font-semibold">Not yet synced</span></span>
                                 <button onclick="triggerManualApiSync()" type="button" class="bg-sky-700 hover:bg-sky-600 text-white px-2 py-0.5 rounded text-xs transition-colors flex items-center gap-1 cursor-pointer shrink-0">
                                     <i class="fa-solid fa-rotate"></i> Sync
                                 </button>

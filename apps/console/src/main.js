@@ -3012,16 +3012,33 @@ function refreshAnalyticsSidebar() {
             };
         }
 
-        function updateApiUiStatus(isCached, gridLat, gridLng, timestamp) {
+        // Provenance of the metocean numbers on screen. Three states, not two:
+        // the old boolean could not express "the fetch failed and these are
+        // default constants", so a failed sync rendered as LIVE SYNC while the
+        // event log claimed a successful one. The `isLive` flag that would have
+        // caught it was set in three places and read in none.
+        //
+        // Colour follows the product register: sky = informational (live),
+        // emerald = nominal (cache), amber = caution (defaults). The distinction
+        // matters because every recommendation downstream is computed from these
+        // numbers, so "where did the weather come from" is the same question as
+        // "is the advice about today".
+        const API_STATUS = {
+            live: { text: "LIVE SYNC", cls: "bg-sky-500/20 text-sky-300",
+                    title: "Conditions fetched from Open-Meteo just now." },
+            cache: { text: "CACHE HIT", cls: "bg-emerald-500/20 text-emerald-300",
+                    title: "Conditions from a recent Open-Meteo response held in the local tile cache." },
+            fallback: { text: "NO SIGNAL", cls: "bg-amber-500/20 text-amber-300",
+                    title: "Open-Meteo unreachable. Showing DEFAULT conditions, not measured weather — advice is illustrative, not about today." }
+        };
+
+        function updateApiUiStatus(mode, gridLat, gridLng, timestamp) {
+            const s = API_STATUS[mode] || API_STATUS.fallback;
             const badgeEl = document.getElementById('outApiCacheBadge');
             if (badgeEl) {
-                if (isCached) {
-                    badgeEl.className = "bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono font-semibold";
-                    badgeEl.innerText = "CACHE HIT";
-                } else {
-                    badgeEl.className = "bg-sky-500/20 text-sky-300 px-1.5 py-0.5 rounded font-mono font-semibold";
-                    badgeEl.innerText = "LIVE SYNC";
-                }
+                badgeEl.className = `${s.cls} px-1.5 py-0.5 rounded font-mono font-semibold`;
+                badgeEl.innerText = s.text;
+                badgeEl.title = s.title;
             }
             const tileEl = document.getElementById('outApiTile');
             if (tileEl) {
@@ -3029,8 +3046,14 @@ function refreshAnalyticsSidebar() {
             }
             const lastSyncEl = document.getElementById('outApiLastSync');
             if (lastSyncEl) {
-                const secsAgo = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
-                lastSyncEl.innerText = `Synced ${secsAgo}s ago`;
+                if (mode === 'fallback') {
+                    // "Synced 0s ago" next to numbers that never came from a
+                    // network is the specific lie this replaces.
+                    lastSyncEl.innerText = 'Never synced';
+                } else {
+                    const secsAgo = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+                    lastSyncEl.innerText = `Synced ${secsAgo}s ago`;
+                }
             }
         }
 
@@ -3040,7 +3063,7 @@ function refreshAnalyticsSidebar() {
             if (!force) {
                 const cached = MarineDataCache.get(lat, lng);
                 if (cached) {
-                    updateApiUiStatus(true, cached.gridLat, cached.gridLng, cached.timestamp);
+                    updateApiUiStatus('cache', cached.gridLat, cached.gridLng, cached.timestamp);
                     return cached.data;
                 }
             }
@@ -3064,7 +3087,7 @@ function refreshAnalyticsSidebar() {
                     // Fallback to offline prediction using cached hourly data
                     const fallback = MarineDataCache.get(lat, lng, true);
                     if (fallback && fallback.data) {
-                        updateApiUiStatus(true, fallback.gridLat, fallback.gridLng, fallback.timestamp);
+                        updateApiUiStatus('cache', fallback.gridLat, fallback.gridLng, fallback.timestamp);
                         log(`Offline Fallback: Using predicted marine data for [${fallback.gridLat}°N, ${fallback.gridLng}°E]`, "info");
                         return fallback.data;
                     }
@@ -3089,14 +3112,28 @@ function refreshAnalyticsSidebar() {
                 }
 
                 const liveData = { windSpd, windDir, currentSpd, currentDir, waveHt, waveDir, isLive };
-                
+
+                if (!isLive) {
+                    // Neither endpoint answered, so every value above is the
+                    // default constant declared at the top of this block. Do NOT
+                    // cache it: a cached default is indistinguishable from cached
+                    // real weather on the next read, which would launder an
+                    // invented number into a "CACHE HIT" for the rest of the
+                    // session. Leaving it uncached also means the next call
+                    // retries the fetch instead of settling for the constants.
+                    const [gLat, gLng] = MarineDataCache.getTileKey(lat, lng).split(',');
+                    updateApiUiStatus('fallback', gLat, gLng, null);
+                    log(`Open-Meteo unreachable — advising on DEFAULT conditions (wind ${windSpd} kts, waves ${waveHt} m), not measured weather.`, "alert");
+                    return liveData;
+                }
+
                 const hourlyData = {
                     weather: weatherRes ? weatherRes.hourly : null,
                     marine: marineRes ? marineRes.hourly : null
                 };
-                
+
                 const entry = MarineDataCache.set(lat, lng, liveData, hourlyData);
-                updateApiUiStatus(false, entry.gridLat, entry.gridLng, entry.timestamp);
+                updateApiUiStatus('live', entry.gridLat, entry.gridLng, entry.timestamp);
                 log(`Open-Meteo REST API Synced: Spatial Grid [${entry.gridLat}°N, ${entry.gridLng}°E] - Wind: ${windSpd}kts, Waves: ${waveHt}m`, "ai");
                 return liveData;
             } catch (err) {
