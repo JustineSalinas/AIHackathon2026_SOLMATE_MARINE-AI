@@ -27,6 +27,31 @@ import "driver.js/dist/driver.css";
             const delta = ((((b - a) % 360) + 540) % 360) - 180;
             return (a + delta * t + 360) % 360;
         }
+
+        // A hull cannot pivot. Rudder authority and speed bound how fast a heading
+        // can change, so the vessel is steered TOWARD its course rather than
+        // snapped onto it at every waypoint.
+        //
+        // This is a vessel property, not a visual easing, and the distinction is
+        // load-bearing: `heading_deg` is sent to /advise and feeds the resistance
+        // model, which resolves wind and sea onto the hull by relative angle. A
+        // heading smoothed in *real* time to look nice would quietly change the
+        // advised RPM. The limit is therefore in degrees per second of SIMULATED
+        // time and scales with the sim clock, which is also what makes it correct
+        // at 120x: a boat really would finish the turn in that much sea time.
+        //
+        // 8 deg/s is a comfortable rate for a loaded passenger banca -- above the
+        // 3 deg/s "standard rate" used in navigation, well under what an unloaded
+        // hull could manage.
+        const MAX_RATE_OF_TURN_DEG_S = 8;
+
+        function steerToward(current, target, maxDeltaDeg) {
+            const delta = ((((target - current) % 360) + 540) % 360) - 180;
+            if (!Number.isFinite(delta) || Math.abs(delta) <= maxDeltaDeg) {
+                return (target + 360) % 360;
+            }
+            return (current + Math.sign(delta) * maxDeltaDeg + 360) % 360;
+        }
         
         function sphericalInterpolate(lat1, lon1, lat2, lon2, fraction) {
             const d = sphericalDistance(lat1, lon1, lat2, lon2) / 6371e3;
@@ -63,7 +88,9 @@ import "driver.js/dist/driver.css";
             
             // currentPax is null until the manifest is taken at departure, and
             // returns to null once the voyage is logged. Null means "not asked".
-            ship: { progress: 0, lat: 10.6928, lng: 122.5644, angle: 0, headingDeg: 0, targetHeadingDeg: 0, actualKnots: 0, distanceTraveledNM: 0, currentPax: null },
+            // `steering` is false until the vessel is first under way, so the
+            // opening frame adopts its course instead of rotating onto it.
+            ship: { progress: 0, lat: 10.6928, lng: 122.5644, angle: 0, headingDeg: 0, targetHeadingDeg: 0, actualKnots: 0, distanceTraveledNM: 0, currentPax: null, steering: false },
             
             basePath: [],     
             targetPath: [],   
@@ -4785,21 +4812,42 @@ function refreshAnalyticsSidebar() {
                         State.ship.lng = pt.lng;
                         
                         let routeHeading = sphericalHeading(lat1, lng1, lat2, lng2);
-                        
+
+                        // The course the vessel WANTS. Departure and arrival still
+                        // blend toward the jetty heading; the rest of the crossing
+                        // wants the current leg's bearing.
+                        let desiredHeading;
                         if (State.ship.progress < 0.05 && path.length > 1) {
                             let landHeading = sphericalHeading(path[1].lat, path[1].lng, path[0].lat, path[0].lng);
                             let blend = State.ship.progress / 0.05;
-                            headingDeg = lerpAngle(landHeading, routeHeading, blend);
+                            desiredHeading = lerpAngle(landHeading, routeHeading, blend);
                         } else if (State.ship.progress > 0.95 && path.length > 1) {
                             let lastP = path[path.length - 1];
                             let prevP = path[path.length - 2];
                             let landHeading = sphericalHeading(prevP.lat, prevP.lng, lastP.lat, lastP.lng);
                             let blend = (State.ship.progress - 0.95) / 0.05;
-                            headingDeg = lerpAngle(routeHeading, landHeading, blend);
+                            desiredHeading = lerpAngle(routeHeading, landHeading, blend);
                         } else {
-                            headingDeg = routeHeading;
+                            desiredHeading = routeHeading;
                         }
-                        
+
+                        // The course it can actually hold. Without this the heading
+                        // snapped to each leg's bearing, so a smoothed RRT path --
+                        // which is many short legs -- rotated the hull in a series
+                        // of instant steps.
+                        if (!State.ship.steering) {
+                            // First frame under way: adopt the course rather than
+                            // swinging onto it from whatever the marker last held.
+                            State.ship.steering = true;
+                            headingDeg = desiredHeading;
+                        } else {
+                            headingDeg = steerToward(
+                                headingDeg,
+                                desiredHeading,
+                                MAX_RATE_OF_TURN_DEG_S * deltaTime * simMult,
+                            );
+                        }
+
                         State.ship.headingDeg = headingDeg;
                     }
                     
