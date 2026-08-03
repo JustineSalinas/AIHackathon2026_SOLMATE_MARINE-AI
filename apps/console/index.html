@@ -251,7 +251,7 @@
                                              reveal is empty at rest and covers
                                              every dot whole when complete. -->
                                         <path class="splash-route-reveal"
-                                              d="M0 28L14 31C120 56 250 54 338 21L352 16"
+                                              d="M0 28L14 31C120 58 318 54 368 32L381 26"
                                               stroke="#fff" stroke-width="24" fill="none"
                                               stroke-linecap="butt" pathLength="100"/>
                                     </mask>
@@ -265,14 +265,17 @@
                                        dart lower-left  -> (352.2, 17.5)
                                        dart base/fold   -> (380.3, 23.4)
 
-                                     The curve ENDS at (338,21), solved so the
-                                     final dot's outer edge clears the dart's
-                                     leftmost ink by 14px. Ending it ON the base
-                                     edge (362,19) was worse: the dot touched the
-                                     hull and read as stuck to its back rather
-                                     than as the last fix before it. The track
-                                     should arrive at the vessel, not collide
-                                     with it.
+                                     The curve ENDS at (368,32), which passes
+                                     UNDER the hull rather than stopping beside
+                                     it. x=368 falls between the dart's lower-left
+                                     corner (352.2) and its fold (380.3), so the
+                                     last dots sit in the open water beneath the
+                                     left wing -- 9.1px of clearance below the
+                                     underside, arriving at 23.7 degrees.
+                                     Earlier attempts stopped level with the
+                                     hull's left corner, which read as the track
+                                     halting alongside the vessel instead of
+                                     running beneath it.
 
                                      It STARTS at (14,31), the ring's own centre,
                                      so the route leaves the origin rather than
@@ -283,17 +286,17 @@
                                      marker, which is how a chart draws one.
 
                                      pathLength normalises the curve to 100 so the
-                                     period can be chosen to DIVIDE it: 100/16
+                                     period can be chosen to DIVIDE it: 100/17
                                      places a dot at 0 AND at 100, putting one on
                                      the origin and one at the arrival point, at
-                                     30.2px spacing. The route box's scale is
+                                     30.9px spacing. The route box's scale is
                                      uniform (x 0.013684 vs y 0.013692 em/unit),
                                      so the dash advances at a constant rate along
                                      the whole trajectory. -->
-                                <path d="M14 31C120 56 250 54 338 21"
+                                <path d="M14 31C120 58 318 54 368 32"
                                       stroke="#f2731c" stroke-width="10" fill="none"
                                       stroke-linecap="round"
-                                      pathLength="100" stroke-dasharray="0.1 6.15"
+                                      pathLength="100" stroke-dasharray="0.1 5.782353"
                                       mask="url(#mai-route-mask)"/>
                                 <!-- On the path, not floating above it. The ring
                                      is the departure point, so the first dot has
