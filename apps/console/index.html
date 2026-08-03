@@ -225,24 +225,46 @@
                                     <mask id="mai-route-mask" maskUnits="userSpaceOnUse"
                                           x="0" y="-10" width="380" height="72">
                                         <path class="splash-route-reveal"
-                                              d="M48 26C126 48 246 48 340 18"
+                                              d="M14 31C120 56 250 54 362 19"
                                               stroke="#fff" stroke-width="24" fill="none"
                                               stroke-linecap="round" pathLength="100"/>
                                     </mask>
                                 </defs>
-                                <!-- pathLength normalises the curve to 100 so the
-                                     dash period can be chosen to DIVIDE it:
-                                     100/14 = 7.142857 puts a dot at 0 and a dot
-                                     exactly at 100. Without that the pattern
-                                     stopped wherever it happened to fall -- up to
-                                     a full period short -- so the course visibly
-                                     gave up ~34px before the dart it is supposed
-                                     to arrive at. The last dot now lands on the
-                                     dart's lower-left corner. -->
-                                <path d="M48 26C126 48 246 48 340 18"
+                                <!-- ONE cubic, both endpoints solved rather than
+                                     eyeballed. The two SVGs sit in different
+                                     coordinate systems, so the dart's vertices
+                                     were converted into this viewBox through the
+                                     shared em frame:
+
+                                       dart lower-left  -> (352.2, 17.5)
+                                       dart base/fold   -> (380.3, 23.4)
+
+                                     The curve ENDS at (362,19), which lies on the
+                                     segment between those two -- i.e. exactly on
+                                     the dart's base edge, so the track runs up to
+                                     the hull and disappears under it instead of
+                                     stopping short of it.
+
+                                     It STARTS at (14,31), the ring's own centre,
+                                     so the route leaves the origin rather than
+                                     beginning somewhere near it. Because the dash
+                                     pattern is measured from the path start, the
+                                     first dot is coincident with that centre and
+                                     the ring encircles it -- a fix inside its own
+                                     marker, which is how a chart draws one.
+
+                                     pathLength normalises the curve to 100 so the
+                                     period can be chosen to DIVIDE it: 100/17
+                                     places a dot at 0 AND at 100, putting one on
+                                     the origin and one on the hull, at 30.5px
+                                     spacing. The route box's scale is uniform
+                                     (x 0.013684 vs y 0.013692 em/unit), so the
+                                     dash advances at a constant rate along the
+                                     whole trajectory. -->
+                                <path d="M14 31C120 56 250 54 362 19"
                                       stroke="#f2731c" stroke-width="10" fill="none"
                                       stroke-linecap="round"
-                                      pathLength="100" stroke-dasharray="0.1 7.042857"
+                                      pathLength="100" stroke-dasharray="0.1 5.782353"
                                       mask="url(#mai-route-mask)"/>
                                 <!-- On the path, not floating above it. The ring
                                      is the departure point, so the first dot has
@@ -457,8 +479,15 @@
            DOTS rather than the letters -- at the old value the lowest dot came
            within 9px of the strapline's cap line and read as one crowded
            object. */
+        /* #e2e8f0 at 500, up from #93a0b4 at 400. The old value cleared AA on
+           paper (7.9:1) and still read as dim, because contrast ratio does not
+           account for weight or size -- 14px at 400 in a muted slate on a black
+           field is legible in a screenshot and marginal on a projector at the
+           back of a room, which is where this actually gets read. 17.0:1 now,
+           and the extra weight does more for legibility here than the ratio. */
         .splash-sub {
-            color: #93a0b4;
+            color: #e2e8f0;
+            font-weight: 500;
             align-self: center;
             text-align: center;
             margin-top: calc(var(--mark-w) * 0.10);
@@ -475,16 +504,23 @@
         .splash-track {
             height: 2px; width: calc(var(--mark-w) * 0.38);
             border-radius: 9999px; overflow: hidden;
-            /* Was Tailwind's bg-slate-800/70, which computes to 1.24:1 on black
-               -- invisible. What shipped was a lone orange dash floating in
-               nothing, reading as an artifact rather than a progress bar. */
-            background: #2f3a4d;
+            /* #64748b, 4.4:1. Started as Tailwind's bg-slate-800/70, which
+               computes to 1.24:1 on black -- effectively invisible, so what
+               shipped was a lone orange dash floating in nothing and reading as
+               an artifact rather than a progress bar. The rail has to be legible
+               for the fill to mean anything: a bar with no visible track is not
+               a bar, it is a mark. */
+            background: #64748b;
         }
-        /* 0.75rem, not 11px. index.css sets --text-min: 0.75rem and states that
+        /* #cbd5e1, 14.0:1, up from #79839a at 5.5:1. Deliberately one step below
+           the strapline rather than equal to it -- this is a status line, and
+           flattening the two would cost the hierarchy without buying legibility
+           it does not already have at 14:1.
+           0.75rem, not 11px: index.css sets --text-min: 0.75rem and states that
            nothing in this interface may go below it; the splash was breaking the
            project's own floor. */
         .splash-status {
-            color: #79839a; font-size: 0.75rem;
+            color: #cbd5e1; font-size: 0.75rem;
             font-family: 'JetBrains Mono', monospace; letter-spacing: 0.025em;
         }
         .splash-bar {
