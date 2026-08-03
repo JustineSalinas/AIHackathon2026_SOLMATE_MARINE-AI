@@ -251,7 +251,7 @@
                                              reveal is empty at rest and covers
                                              every dot whole when complete. -->
                                         <path class="splash-route-reveal"
-                                              d="M0 28L14 31C120 58 320 56 358 39L371 33"
+                                              d="M0 28L14 31C120 58 290 56 338 26L350 19"
                                               stroke="#fff" stroke-width="24" fill="none"
                                               stroke-linecap="butt" pathLength="100"/>
                                     </mask>
@@ -262,25 +262,18 @@
                                      hull's vertices are converted into THIS
                                      viewBox through the em frame they share:
 
-                                       wing tip  -> (341.3,  -0.2)
-                                       notch     -> (370.5,   2.7)
-                                       tail tip  -> (372.7,  34.1)
+                                       left wing tip -> (346.4, 17.1)
+                                       notch         -> (383.0,  8.8)
+                                       right wing    -> (410.7, 34.5)
 
-                                     Those are ink positions, not path positions:
-                                     the arrow's rounded corners come from a
-                                     9-unit round-join stroke, so its real extent
-                                     is 4.5 units outside the path everywhere.
-
-                                     The curve ENDS at (358,39). The navigation
-                                     arrow's lowest ink is its TAIL TIP, where the
-                                     old dart's was a wing corner, so the track now
-                                     arrives just below and left of the tail --
-                                     the end a wake actually attaches to.
-                                     Solving to the tail's vertex gave 4px on the
-                                     render, not the 10px intended: the corner is
-                                     ROUNDED, so its nearest ink sits well left of
-                                     the point the maths used. Backed off until the
-                                     measured gap matched the letters' own 6-11px.
+                                     The curve ENDS at (338,26), below and left of
+                                     the LEFT WING TIP -- which the raised notch
+                                     makes the hull's lowest, leftmost ink, and so
+                                     the only vertex a track can credibly arrive
+                                     at. It rises at 32 degrees to get there;
+                                     flatter approaches ran past underneath the
+                                     hull and read as passing by rather than
+                                     meeting it.
 
                                      It STARTS at (14,31), the ring's own centre,
                                      so the route leaves the origin rather than
@@ -298,10 +291,10 @@
                                      uniform (x 0.013684 vs y 0.013692 em/unit),
                                      so the dash advances at a constant rate along
                                      the whole trajectory. -->
-                                <path d="M14 31C120 58 320 56 358 39"
+                                <path d="M14 31C120 58 290 56 338 26"
                                       stroke="#f2731c" stroke-width="10" fill="none"
                                       stroke-linecap="round"
-                                      pathLength="100" stroke-dasharray="0.1 5.782353"
+                                      pathLength="100" stroke-dasharray="0.1 6.15"
                                       mask="url(#mai-route-mask)"/>
                                 <!-- On the path, not floating above it. The ring
                                      is the departure point, so the first dot has
@@ -312,35 +305,29 @@
                                         stroke="#f97316" stroke-width="7" fill="none"/>
                             </svg>
 
-                            <!-- Navigation arrow, per the supplied reference:
-                                 swept wing, a notch at the inner corner, and a
-                                 tail hanging below. Vertices normalised off that
-                                 image (which is ~1:1, where the old dart was
-                                 100x165) and inset by 5 units so the 9-unit
-                                 round-join stroke can put the reference's rounded
-                                 corners back without the silhouette growing.
-                                 Gradient rather than the old two-face fold: this
-                                 silhouette folds along apex-to-notch, and painting
-                                 that as two flats would put a hard seam down an
-                                 outline the reference renders as one continuous
-                                 piece. The ramp still runs light-at-top to
-                                 dark-at-tail, so it reads as one object catching
-                                 light instead of a flat glyph -- which is what the
-                                 fold was there to do.
-                                 Top stop stays at #f97316 or below: brighter, the
-                                 arrow out-values MARINE's own highlight and pulls
-                                 the eye before the wordmark. -->
-                            <svg class="splash-pointer" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-                                <defs>
-                                    <linearGradient id="mai-dart-grad" x1="0.18" y1="0" x2="0.62" y2="1">
-                                        <stop offset="0" stop-color="#f97316"/>
-                                        <stop offset="0.5" stop-color="#ea6a1c"/>
-                                        <stop offset="1" stop-color="#c2410c"/>
-                                    </linearGradient>
-                                </defs>
-                                <path d="M95 5L5 48L45 52L48 95Z"
-                                      fill="url(#mai-dart-grad)" stroke="url(#mai-dart-grad)"
-                                      stroke-width="9" stroke-linejoin="round"/>
+                            <!-- Two faces on a fold from the apex, per the supplied
+                                 reference. Vertices normalised off that image:
+
+                                   apex        (80,   0)
+                                   left wing   ( 0, 132)   <- the tilt
+                                   notch       (57, 119)
+                                   right wing  (100, 159)
+
+                                 The notch sits ABOVE the left wing tip (119 vs
+                                 132), so the base is a concave V rather than the
+                                 straight edge the earlier dart had. That is what
+                                 throws the left wing down and out, and it is the
+                                 whole reason the route can meet the hull from
+                                 below: the wing tip is now the lowest, leftmost
+                                 ink, so the track has something to arrive at.
+                                 Dark face left, lit face right, matching the
+                                 reference. On black the shadow face is #c2410c
+                                 rather than the concept's near-black -- there, a
+                                 near-black face is not a shadow, it is a hole. -->
+
+                            <svg class="splash-pointer" viewBox="0 0 100 159" fill="none" aria-hidden="true">
+                                <path d="M80 0L0 132L57 119Z" fill="#c2410c"/>
+                                <path d="M80 0L57 119L100 159Z" fill="#f97316"/>
                             </svg>
                         </span>
 
@@ -486,12 +473,11 @@
         .splash-mark {
             position: relative; z-index: 1;
             display: inline-block;
-            /* 1.0em, up from 0.80. The reference arrow is ~square where the old
-               dart was 100x165, so holding the width would have collapsed its
-               height to 0.80em -- barely over the 0.72em cap line, and it would
-               have stopped breaking the wordline, which is what stops it reading
-               as a letter. */
-            width: 1.0em;
+            /* 0.88em against a 100x159 viewBox -> 1.40em tall, or ~1.9x the
+               0.72em cap height. The hull has to break the wordline on both
+               sides; sized to the caps it stops reading as an instrument and
+               starts reading as a letter. */
+            width: 0.88em;
             /* Margins set from the INK, not the box -- a leaning triangle fills
                nothing like its bounding rectangle, so the box's own numbers are
                meaningless here.
@@ -504,7 +490,12 @@
                6-8px, inside the letters' own range. At mid-height the gaps open
                up well beyond that, which is unavoidable: the silhouette leans,
                and the lean is the concept's. */
-            margin: 0 0 0 0.06em;
+            /* The raised notch throws the left wing DOWN AND OUT, so the hull's
+               leftmost ink now sits low -- right where the E's arms end. At the
+               old margin the two touched with 1px between them. Pushed right to
+               clear the E, and the right margin goes negative to stop that shove
+               opening an equally wrong gap before the I. */
+            margin: 0 -0.01em 0 0.046em;
         }
         /* Roughly twice cap height, per the concept, and overhanging the
            baseline. The dart breaking the cap line on both sides is what stops
