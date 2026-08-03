@@ -14,13 +14,33 @@ collected from any vessel.
 | Key | Source | Licence | Used for |
 |---|---|---|---|
 | `uci-cbm` | UCI *Condition Based Maintenance of Naval Propulsion Plants* (Coraddu et al., 2014) | CC BY 4.0 | Engine fuel map for Speed Optimization |
-| `nasa-cmapss` | NASA C-MAPSS turbofan degradation (Saxena et al., 2008) | Public domain (US Gov) | Pretraining the Phase 1 anomaly detector |
+| ~~`nasa-cmapss`~~ | NASA C-MAPSS turbofan degradation (Saxena et al., 2008) | Public domain (US Gov) | **Registered and fetchable, but consumed by nothing.** See the correction below. |
 | `natural-earth-coastline` | Natural Earth 10m physical coastline | Public domain | Chart geometry on the bridge display |
 | `sentinel2-cloudless` | Sentinel-2 cloudless 2020 (EOX) | CC BY 4.0 | Satellite basemap, and the land mask the helm view ray-casts for its horizon |
 | `openseamap-seamarks` | OpenSeaMap aids to navigation (OpenStreetMap seamark tags) | ODbL 1.0 | Charted lights and harbour features on the bridge display — 10 marks, 8 lit, in the chart window |
 | `open-meteo-weather-archive` | Open-Meteo Historical Weather API (ERA5 reanalysis) | CC BY 4.0 | Route forecaster's wind targets — 2.5 years, 9-point grid |
 | `open-meteo-marine-archive` | Open-Meteo Marine Weather API (wave + ocean current models) | CC BY 4.0 | Route forecaster's wave/current targets — same grid and range |
 | ~~GEBCO~~ | GEBCO global bathymetry grid | Public, attribution required | Depth safety constraint — **not yet integrated**, and deliberately absent from `data/registry.py` so `data/download.py` cannot fetch a source we do not use. Route Optimization is the module that needs it. |
+
+> **Corrected 2026-08-04 — C-MAPSS pretrains nothing.** This table previously
+> listed its use as "Pretraining the Phase 1 anomaly detector." No code path
+> consumes it: `git grep cmapss -- '*.py'` returns `data/registry.py` and nothing
+> else, and there is no `services/maintenance/train.py`. The Phase 1 detector
+> fits `VesselBaseline` at runtime, and the API serves
+> `synthetic_healthy_baseline()` — a seeded RNG prior — until a vessel has logged
+> its own history.
+>
+> The dataset stays in the registry because it is the intended Phase 2 (RUL)
+> pretraining corpus, and removing it would lose the provenance work already done
+> on it. But "registered" is not "used", and the difference belongs in the
+> column that claims a use.
+>
+> This contradicted [Bias 3](#bias-3--the-anomaly-baseline-is-synthetic-not-this-vessels)
+> in this same document, which has correctly described the baseline as synthetic
+> all along. A sources table that disagrees with its own bias section is worse
+> than either being wrong alone, because each looks corroborated by the file it
+> sits in. Recorded here rather than quietly edited, per the convention this
+> document already follows.
 
 **PAGASA** is named in the technical profile but has **no public programmatic
 API**. It is a stated future integration, not a working data source in this
