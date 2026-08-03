@@ -357,6 +357,22 @@ async def _ask_gemini(kind: str, template_en: str, template_fil: str) -> Phrasin
     return _accept(*pair, template_en, template_fil, SOURCE_GEMINI)
 
 
+#: Models that accept `output_config.effort`. Deliberately an ALLOWLIST: sending
+#: the parameter to a model that does not take it is a 400 and costs the whole
+#: rewrite, while omitting it merely lets the model use its own default. So an
+#: unrecognised model goes without and still works. Haiku 4.5 is the case that
+#: found this -- it supports structured outputs but rejects `effort`, and the
+#: symptom was every advisory silently serving `template`.
+_EFFORT_MODELS = (
+    "opus-5", "opus-4-8", "opus-4-7", "opus-4-6", "opus-4-5",
+    "sonnet-5", "sonnet-4-6", "fable-5", "mythos-5",
+)
+
+
+def _supports_effort(model: str) -> bool:
+    return any(name in model for name in _EFFORT_MODELS)
+
+
 async def _ask_claude(kind: str, template_en: str, template_fil: str) -> Phrasing | None:
     """One call. Returns None on any failure -- including a rejected rewrite."""
     try:
@@ -370,17 +386,20 @@ async def _ask_claude(kind: str, template_en: str, template_fil: str) -> Phrasin
 
     user = _user_prompt(kind, template_en, template_fil)
 
+    output_config: dict[str, object] = {
+        "format": {"type": "json_schema", "schema": _SCHEMA},
+    }
+    if _supports_effort(model):
+        # A phrasing task. Low effort keeps the sentence on the display while
+        # the captain still cares about it.
+        output_config["effort"] = "low"
+
     try:
         response = await client.messages.create(
             model=model,
             max_tokens=1000,
             system=_SYSTEM,
-            output_config={
-                # A phrasing task. Low effort keeps the sentence on the display
-                # while the captain still cares about it.
-                "effort": "low",
-                "format": {"type": "json_schema", "schema": _SCHEMA},
-            },
+            output_config=output_config,
             messages=[{"role": "user", "content": user}],
         )
     except Exception as exc:  # noqa: BLE001 -- every failure has the same answer
