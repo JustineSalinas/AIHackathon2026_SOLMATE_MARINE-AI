@@ -61,7 +61,9 @@ import "driver.js/dist/driver.css";
             portA: null, 
             portB: null,
             
-            ship: { progress: 0, lat: 10.6928, lng: 122.5644, angle: 0, headingDeg: 0, targetHeadingDeg: 0, actualKnots: 0, distanceTraveledNM: 0 },
+            // currentPax is null until the manifest is taken at departure, and
+            // returns to null once the voyage is logged. Null means "not asked".
+            ship: { progress: 0, lat: 10.6928, lng: 122.5644, angle: 0, headingDeg: 0, targetHeadingDeg: 0, actualKnots: 0, distanceTraveledNM: 0, currentPax: null },
             
             basePath: [],     
             targetPath: [],   
@@ -2262,6 +2264,47 @@ import "driver.js/dist/driver.css";
             typhoon: { windSpd: 65, windDir: 315, currentSpd: 6.5, currentDir: 270, waveHt: 5.0, waveDir: 315, tide: 2.0 }
         };
 
+        // Run the metocean inputs off real conditions at the vessel's position
+        // rather than a canned preset.
+        //
+        // This deliberately does not fetch anything itself. The console already
+        // polls live marine data every two seconds through
+        // process2SecondApiLivestream (State.apiLivestream, on by default), and
+        // that loop writes all six metocean inputs. A second fetcher would race
+        // it -- whichever wrote last would win, and the inputs would flicker
+        // between two sources roughly every two seconds. So "live" forces the
+        // existing pipeline to refresh now and reports what it produced.
+        async function refreshLiveMetocean() {
+            const txtLive = document.getElementById('liveWeatherText');
+            if (txtLive) txtLive.textContent = 'Fetching…';
+
+            // Selecting "live" is also the way to switch the poll back on if it
+            // was disabled, otherwise the reading would go stale immediately.
+            State.apiLivestream = true;
+
+            try {
+                await process2SecondApiLivestream();
+            } catch (e) {
+                if (txtLive) txtLive.textContent = 'Live feed unreachable — inputs unchanged.';
+                log(`Live metocean refresh failed: ${e.message}.`, 'warn');
+                return;
+            }
+
+            // Report the inputs as they now stand: that is what the simulation
+            // will actually use, whether the feed answered or the pipeline fell
+            // back to its cache.
+            const lat = State.ship.lat || 0;
+            const lng = State.ship.lng || 0;
+            const wind = getSafeVal('inWindSpd', null);
+            const wave = getSafeVal('inWave', null);
+
+            if (txtLive) {
+                txtLive.textContent =
+                    `${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E — wind ${wind} kts, waves ${wave} m`;
+            }
+            log(`Live metocean refreshed at ${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E.`, 'ai');
+        }
+
         const TOOL_HINTS = {
             pointer: "Pointer Active: Drag pins or click map tools.",
             portA: "Click anywhere on map to set Departure Point (Port A).",
@@ -2484,9 +2527,12 @@ function saveTripData() {
         portA: State.portA ? State.portA.name : 'Unknown',
         portB: State.portB ? State.portB.name : 'Unknown',
         distanceNM: State.ship.distanceTraveledNM || 0,
+        // null, not 0, when the manifest was never taken -- an unrecorded
+        // passenger count is not an empty vessel.
+        pax: Number.isFinite(State.ship.currentPax) ? State.ship.currentPax : null,
         data: [...State.mlLogger.data]
     };
-    
+
     const history = getHistoricalTrips();
     history.push(trip);
     try {
@@ -2494,6 +2540,8 @@ function saveTripData() {
     } catch(e) {}
     
     State.mlLogger.data = [];
+    // The manifest belongs to the voyage just logged; the next departure asks again.
+    State.ship.currentPax = null;
     State.currentViewedTrip = null;
     if (document.getElementById('txtRecordCount')) {
         document.getElementById('txtRecordCount').textContent = '0';
@@ -2634,6 +2682,89 @@ function refreshAnalyticsSidebar() {
 }
 
 
+        // Passenger manifest, asked once per departure.
+        //
+        // Runs the voyage only after the operator confirms, so `onConfirm` is the
+        // continuation rather than the caller continuing regardless -- cancelling
+        // must leave the vessel alongside, not under way with a blank manifest.
+        // Both listeners are removed on close; re-opening the dialog would
+        // otherwise stack a second pair and fire the continuation twice.
+        function showPaxModal(onConfirm) {
+            const modal = document.getElementById('paxModal');
+            const inCurrentPax = document.getElementById('inCurrentPax');
+            const btnCancelPax = document.getElementById('btnCancelPax');
+            const btnConfirmPax = document.getElementById('btnConfirmPax');
+            const paxError = document.getElementById('paxError');
+            const paxModalMax = document.getElementById('paxModalMax');
+            const inModalEta = document.getElementById('inModalEta');
+            const etaError = document.getElementById('etaError');
+            const mainInEta = document.getElementById('inEta');
+
+            // No dialog in the DOM is not a reason to refuse to sail.
+            if (!modal || !inCurrentPax || !btnConfirmPax || !btnCancelPax) {
+                if (onConfirm) onConfirm();
+                return;
+            }
+
+            const maxPax = Math.max(0, parseInt(getSafeVal('inMaxPax', 40), 10) || 0);
+            if (paxModalMax) paxModalMax.textContent = maxPax;
+            if (inCurrentPax) inCurrentPax.max = maxPax;
+            if (inModalEta && mainInEta) inModalEta.value = mainInEta.value || 25;
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            inCurrentPax.value = '';
+            paxError.classList.add('hidden');
+            if (etaError) etaError.classList.add('hidden');
+            inCurrentPax.focus();
+
+            const cleanup = () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                btnCancelPax.removeEventListener('click', onCancelClick);
+                btnConfirmPax.removeEventListener('click', onConfirmClick);
+            };
+
+            const onCancelClick = () => {
+                cleanup();
+                log('Departure cancelled at the passenger manifest.', 'info');
+            };
+
+            const onConfirmClick = () => {
+                const pax = parseInt(inCurrentPax.value, 10);
+                const etaVal = inModalEta ? parseFloat(inModalEta.value) : null;
+                let hasError = false;
+
+                if (!Number.isFinite(pax) || pax < 0 || pax > maxPax) {
+                    paxError.classList.remove('hidden');
+                    hasError = true;
+                } else {
+                    paxError.classList.add('hidden');
+                }
+
+                if (inModalEta && (!Number.isFinite(etaVal) || etaVal <= 0)) {
+                    if (etaError) etaError.classList.remove('hidden');
+                    hasError = true;
+                } else if (etaError) {
+                    etaError.classList.add('hidden');
+                }
+
+                if (hasError) return;
+
+                State.ship.currentPax = pax;
+                if (mainInEta && Number.isFinite(etaVal)) {
+                    setSafeVal('inEta', etaVal);
+                }
+                evaluateAndAdjustEtaDynamics();
+                log(`Manifest: ${pax} of ${maxPax} passengers aboard.`, 'info');
+                cleanup();
+                if (onConfirm) onConfirm();
+            };
+
+            btnCancelPax.addEventListener('click', onCancelClick);
+            btnConfirmPax.addEventListener('click', onConfirmClick);
+        }
+
         function completeVoyageAndSwapPorts() {
             saveTripData();
             log("Voyage Complete. Vessel successfully berthed at destination port.", "success");
@@ -2700,16 +2831,22 @@ function refreshAnalyticsSidebar() {
 
             updateDisplayValue('headerSubtitle', `Global High-Precision Land Pathfinder (${REAL_DISTANCE_KM.toFixed(2)} km Voyage)`);
             generateTargetRoute();
-            if (State.isManualMode) { 
-                State.isRunning = true; 
-                if (typeof collapse2DView === 'function' && is2DExpanded) collapse2DView(); 
-                updateDisplayValue('throttleStatus', 'Manual Control Active'); 
-            } else if (State.isGpsMode) {
-                State.isRunning = true;
-                if (typeof collapse2DView === 'function' && is2DExpanded) collapse2DView();
-                updateDisplayValue('throttleStatus', 'Actual Mode Active');
-            } else { 
-                updateDisplayValue('throttleStatus', 'Ports Set - Ready'); 
+            if (State.isManualMode || State.isGpsMode) {
+                const label = State.isManualMode ? 'Manual Control Active' : 'Actual Mode Active';
+                const engage = () => {
+                    State.isRunning = true;
+                    if (typeof collapse2DView === 'function' && is2DExpanded) collapse2DView();
+                    updateDisplayValue('throttleStatus', label);
+                };
+                // updateRoute() also runs on every port drag mid-voyage; only a
+                // standing start is a departure worth asking the manifest for.
+                if (!State.isRunning) {
+                    showPaxModal(engage);
+                } else {
+                    engage();
+                }
+            } else {
+                updateDisplayValue('throttleStatus', 'Ports Set - Ready');
             }
         }
 
@@ -4191,7 +4328,10 @@ function refreshAnalyticsSidebar() {
             if (reqSOG > maxSOG + 0.05) {
                 const remDist = State.isRunning ? distNM * (1.0 - State.ship.progress) : distNM;
                 const actualAchievableMins = (remDist / Math.max(0.1, maxSOG)) * 60;
+                // Clamped, so snap rather than ease -- there is nothing to
+                // converge towards and easing would only lag the cap.
                 targetThrottle = maxSafeThrottle;
+                State.smoothedThrottle = targetThrottle;
 
                 if (boxFeasible) {
                     boxFeasible.classList.remove('hidden');
@@ -4202,6 +4342,7 @@ function refreshAnalyticsSidebar() {
                 const remDist = State.isRunning ? distNM * (1.0 - State.ship.progress) : distNM;
                 const actualAchievableMins = (remDist / Math.max(0.1, minSOG)) * 60;
                 targetThrottle = 15;
+                State.smoothedThrottle = targetThrottle;
 
                 if (boxFeasible) {
                     boxFeasible.classList.remove('hidden');
@@ -4212,17 +4353,41 @@ function refreshAnalyticsSidebar() {
                 // Feasible! Hide warning container completely
                 if (boxFeasible) boxFeasible.classList.add('hidden');
 
+                // Throttle that hits reqSOG, by bisection.
+                //
+                // Speed rises monotonically with throttle, so the 360-sample
+                // linear scan this replaces was doing 360 physics evaluations to
+                // resolve 0.25%. Twelve halvings of the same interval resolve
+                // ~0.02% -- finer and thirty times cheaper, on a function that
+                // runs every animation frame.
+                //
+                // applyRamp is left off deliberately: minSOG and maxSOG above are
+                // both computed without it, so solving against a ramped speed
+                // would be solving against a different curve than the one that
+                // declared this ETA feasible. During the departure and arrival
+                // ramps that mismatch pins the throttle to its cap.
+                let lowT = 10;
+                let highT = maxSafeThrottle;
                 let bestT = 75;
-                let minDiff = Infinity;
-                for (let t = 10; t <= maxSafeThrottle; t += 0.25) {
-                    const p = computePhysicsState(t);
-                    const diff = Math.abs(p.actualSOG - reqSOG);
-                    if (diff < minDiff) {
-                        minDiff = diff;
-                        bestT = t;
+
+                for (let i = 0; i < 12; i++) {
+                    const midT = (lowT + highT) / 2;
+                    if (computePhysicsState(midT).actualSOG < reqSOG) {
+                        lowT = midT;
+                    } else {
+                        highT = midT;
                     }
+                    bestT = midT;
                 }
-                targetThrottle = bestT;
+
+                // Light easing on the solved value. The solver is deterministic,
+                // but its input conditions move every frame, and the readout
+                // shows one decimal -- without this the last digit flickers.
+                if (!Number.isFinite(State.smoothedThrottle)) {
+                    State.smoothedThrottle = bestT;
+                }
+                State.smoothedThrottle = State.smoothedThrottle * 0.95 + bestT * 0.05;
+                targetThrottle = State.smoothedThrottle;
             }
 
             // Dynamically adjust throttle control to achieve required target ETA
@@ -4842,7 +5007,11 @@ function refreshAnalyticsSidebar() {
                 });
             }
 
-            const boatParams = ['LBP', 'Breadth', 'Depth', 'DWT', 'MCR', 'EngineType', 'ServiceSpeed', 'HullType'];
+            const boatParams = ['LBP', 'Breadth', 'Depth', 'DWT', 'MCR', 'EngineType', 'ServiceSpeed', 'HullType', 'MaxPax'];
+
+            // Saved and restored with the rest of the vessel spec, but no term in
+            // the resistance model reads it, so changing it must not replan.
+            const NON_ROUTING_BOAT_PARAMS = new Set(['MaxPax']);
 
             function loadSavedBoatParams() {
                 try {
@@ -4883,6 +5052,7 @@ function refreshAnalyticsSidebar() {
                 if (input) {
                     input.addEventListener('input', () => {
                         saveBoatParams();
+                        if (NON_ROUTING_BOAT_PARAMS.has(param)) return;
                         if (State.portA && State.portB && State.targetPath && State.targetPath.length >= 2) {
                             if (window.boatParamRouteDebounce) clearTimeout(window.boatParamRouteDebounce);
                             window.boatParamRouteDebounce = setTimeout(() => { generateTargetRoute(); }, 1000);
@@ -4916,6 +5086,14 @@ function refreshAnalyticsSidebar() {
             const weatherSelect = document.getElementById('inWeather');
             if (weatherSelect) {
                 weatherSelect.addEventListener('change', (e) => {
+                    const liveStatus = document.getElementById('liveWeatherStatus');
+                    if (e.target.value === 'live') {
+                        if (liveStatus) liveStatus.classList.remove('hidden');
+                        refreshLiveMetocean();
+                        return;
+                    }
+                    if (liveStatus) liveStatus.classList.add('hidden');
+
                     const preset = WEATHER_PRESETS[e.target.value];
                     if (preset) {
                         setSafeVal('inWindSpd', preset.windSpd);
@@ -4928,6 +5106,43 @@ function refreshAnalyticsSidebar() {
 
                         log(`Weather preset changed to [${e.target.value.toUpperCase()}]. Re-evaluating 2D mesh...`, "info");
                         generateTargetRoute();
+                    }
+                });
+            }
+
+            // Operating instructions. The driver.js tour walks the interface;
+            // this is the version you can read at your own pace and scroll back in.
+            const modalInstructions = document.getElementById('instructionsModal');
+            if (modalInstructions) {
+                const openInstModal = () => {
+                    modalInstructions.classList.remove('hidden');
+                    modalInstructions.classList.add('flex');
+                    // Two frames: the element must be laid out before the opacity
+                    // transition has anything to transition from.
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => modalInstructions.classList.remove('opacity-0'));
+                    });
+                };
+                const closeInstModal = () => {
+                    modalInstructions.classList.add('opacity-0');
+                    setTimeout(() => {
+                        modalInstructions.classList.add('hidden');
+                        modalInstructions.classList.remove('flex');
+                    }, 300);
+                };
+
+                ['toolInstructions', 'btnCloseInstructionsModal', 'btnCloseInstructionsModalBottom']
+                    .forEach((id, i) => {
+                        const el = document.getElementById(id);
+                        if (el) el.addEventListener('click', i === 0 ? openInstModal : closeInstModal);
+                    });
+
+                modalInstructions.addEventListener('click', (e) => {
+                    if (e.target === modalInstructions) closeInstModal();
+                });
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && !modalInstructions.classList.contains('hidden')) {
+                        closeInstModal();
                     }
                 });
             }
@@ -5113,16 +5328,26 @@ function refreshAnalyticsSidebar() {
                         return false;
                     }
                     if (!State.isRunning && State.ship.progress < 1) {
+                        const getUnderWay = () => {
+                            if (State.ship.progress === 0) {
+                                State.ship.distanceTraveledNM = 0;
+                            }
+                            State.isRunning = true;
+                            btnStart.innerText = "Abort";
+                            btnStart.className = "h-8 bg-red-500 hover:bg-red-600 text-white px-3 rounded-lg font-bold text-xs transition-all shadow-[0_0_10px_rgba(239,68,68,0.4)] active:scale-95 flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer";
+                            updateDisplayValue('speedStatus', "Underway");
+                            log("Navigation engaged with highly precise land collision avoidance.", "ai");
+                            if (is2DExpanded) collapse2DView();
+                            if (typeof updateClose2DButtonVisibility === 'function') updateClose2DButtonVisibility();
+                        };
+
+                        // Ask for the manifest on departure only. Resuming a halted
+                        // voyage carries the same passengers it left with.
                         if (State.ship.progress === 0) {
-                            State.ship.distanceTraveledNM = 0;
+                            showPaxModal(getUnderWay);
+                        } else {
+                            getUnderWay();
                         }
-                        State.isRunning = true;
-                        btnStart.innerText = "Abort";
-                        btnStart.className = "h-8 bg-red-500 hover:bg-red-600 text-white px-3 rounded-lg font-bold text-xs transition-all shadow-[0_0_10px_rgba(239,68,68,0.4)] active:scale-95 flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer";
-                        updateDisplayValue('speedStatus', "Underway");
-                        log("Navigation engaged with highly precise land collision avoidance.", "ai");
-                        if (is2DExpanded) collapse2DView();
-                        if (typeof updateClose2DButtonVisibility === 'function') updateClose2DButtonVisibility();
                     } else if (State.isRunning) {
                         State.isRunning = false;
                         btnStart.innerText = "Resume";
@@ -5176,16 +5401,28 @@ function refreshAnalyticsSidebar() {
                 const btn = document.getElementById(btnId);
                 if (btn) {
                     btn.addEventListener('click', (e) => {
+                        // Clicking the tool that is already armed disarms it and
+                        // returns to the pointer, so there is a way out of
+                        // obstacle/storm placement that is not "place one more".
+                        const wasActive = e.currentTarget.classList.contains('active');
+                        const nextTool = (wasActive && tool !== 'pointer') ? 'pointer' : tool;
+
                         document.querySelectorAll('.tool-btn').forEach(b => {
                             b.classList.remove('active', 'bg-slate-700', 'text-white');
                             b.classList.add('text-slate-400');
                         });
-                        e.currentTarget.classList.add('active', 'bg-slate-700', 'text-white');
-                        State.activeTool = tool;
+
+                        const nextBtnId = 'tool' + nextTool.charAt(0).toUpperCase() + nextTool.slice(1);
+                        const nextBtn = document.getElementById(nextBtnId);
+                        if (nextBtn) {
+                            nextBtn.classList.remove('text-slate-400');
+                            nextBtn.classList.add('active', 'bg-slate-700', 'text-white');
+                        }
+                        State.activeTool = nextTool;
 
                         const hintEl = document.getElementById('toolHint');
-                        if (hintEl && TOOL_HINTS[tool]) {
-                            hintEl.innerText = TOOL_HINTS[tool];
+                        if (hintEl && TOOL_HINTS[nextTool]) {
+                            hintEl.innerText = TOOL_HINTS[nextTool];
                         }
                     });
                 }

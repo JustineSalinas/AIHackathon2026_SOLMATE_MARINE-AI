@@ -281,7 +281,12 @@
                                 <option value="habagat">Habagat (SW Monsoon - Rough Channel)</option>
                                 <option value="lpa">Low Pressure Area</option>
                                 <option value="typhoon">Typhoon (Severe)</option>
+                                <option value="live">Live conditions at vessel position</option>
                             </select>
+                            <div id="liveWeatherStatus" class="hidden mt-1 text-xs text-sky-300 flex items-start gap-1.5">
+                                <i class="fa-solid fa-satellite-dish shrink-0 mt-0.5"></i>
+                                <span id="liveWeatherText" class="min-w-0">Fetching…</span>
+                            </div>
                         </div>
 
                         <div>
@@ -352,6 +357,10 @@
                             <input type="number" id="inDWT" value="120" step="1" min="1" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-orange-500 outline-none">
                         </div>
                         <div>
+                            <label class="block text-xs text-slate-400 mb-1" for="inMaxPax">Certificated passenger capacity</label>
+                            <input type="number" id="inMaxPax" value="40" step="1" min="1" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-orange-500 outline-none">
+                        </div>
+                        <div>
                             <label class="block text-xs text-slate-400 mb-1" for="inMCR">Main Engine - Maximum Continuous Rating (MCR) (HP)</label>
                             <input type="number" id="inMCR" value="1200" step="10" min="10" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-orange-500 outline-none">
                         </div>
@@ -400,6 +409,9 @@
                 <div class="bg-transparent rounded-xl p-1 flex flex-col gap-1 overflow-y-auto max-h-[calc(100vh-260px)] scrollbar-hide pointer-events-auto shrink-0 items-center">
                                         <button id="toolGuide" class="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-lg hover:bg-emerald-600/30 text-emerald-400 bg-slate-900/80 border border-emerald-500/40 transition-all active:scale-95 shrink-0" title="Interactive Guide & Tour">
                         <i class="fa-solid fa-graduation-cap text-sm"></i>
+                    </button>
+                    <button id="toolInstructions" class="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-lg hover:bg-slate-700/80 text-slate-300 bg-slate-900/80 border border-slate-700/80 transition-all active:scale-95 shrink-0 cursor-pointer" title="Operating instructions">
+                        <i class="fa-solid fa-book-open text-sm"></i>
                     </button>
                     <button id="toolPointer" class="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-lg hover:bg-slate-700/80 text-white bg-slate-700 tool-btn active transition-all active:scale-95 shrink-0" title="Pointer / Drag Ports">
                         <i class="fa-solid fa-arrow-pointer text-sm"></i>
@@ -793,6 +805,90 @@
     </main>
 
     <script type="module" src="/src/main.js"></script>
+
+    <!--
+      Passenger manifest. Asked once, at the moment the voyage is engaged, because
+      that is when the number is known and when it stops being editable. It is
+      recorded on the voyage log; it does not feed the physics.
+    -->
+    <div id="paxModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-[4500] hidden items-center justify-center p-4">
+        <div class="bg-slate-950 border border-orange-500/30 rounded-2xl shadow-[0_0_40px_rgba(249,115,22,0.18)] w-full max-w-sm flex flex-col overflow-hidden">
+            <div class="px-5 py-3.5 border-b border-orange-500/20 flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/30 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-users text-orange-500 text-sm"></i>
+                </div>
+                <h2 class="text-base font-extrabold text-white tracking-wide">BEFORE <span class="text-orange-500">DEPARTURE</span></h2>
+            </div>
+
+            <div class="p-5 space-y-4">
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1" for="inCurrentPax">
+                        Passengers aboard <span class="text-slate-500">(capacity <span id="paxModalMax">40</span>)</span>
+                    </label>
+                    <input type="number" id="inCurrentPax" min="0" step="1" placeholder="0"
+                           class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white focus:border-orange-500 outline-none">
+                    <p id="paxError" class="hidden mt-1 text-xs text-red-300 flex items-start gap-1.5">
+                        <i class="fa-solid fa-circle-exclamation shrink-0 mt-0.5"></i>
+                        <span class="min-w-0">Enter a whole number between 0 and the certificated capacity.</span>
+                    </p>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1" for="inModalEta">Target crossing time (min)</label>
+                    <input type="number" id="inModalEta" min="1" step="1"
+                           class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white focus:border-orange-500 outline-none">
+                    <p id="etaError" class="hidden mt-1 text-xs text-red-300 flex items-start gap-1.5">
+                        <i class="fa-solid fa-circle-exclamation shrink-0 mt-0.5"></i>
+                        <span class="min-w-0">Crossing time must be greater than zero.</span>
+                    </p>
+                </div>
+            </div>
+
+            <div class="px-5 py-3.5 border-t border-slate-800 flex justify-end gap-2 bg-slate-900/40">
+                <button id="btnCancelPax" class="h-8 px-3 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer">Cancel</button>
+                <button id="btnConfirmPax" class="h-8 px-4 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 transition-all active:scale-95 cursor-pointer">Get under way</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Operating instructions -->
+    <div id="instructionsModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-[4000] hidden items-center justify-center p-3 sm:p-5 transition-opacity opacity-0">
+        <div class="bg-slate-950 border border-orange-500/30 rounded-2xl shadow-[0_0_40px_rgba(249,115,22,0.18)] w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+            <div class="px-5 sm:px-6 py-3.5 border-b border-orange-500/20 flex justify-between items-center bg-slate-950 shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/30 flex items-center justify-center">
+                        <i class="fa-solid fa-book-open text-orange-500 text-sm"></i>
+                    </div>
+                    <h2 class="text-base sm:text-lg font-extrabold text-white tracking-wide">HOW TO <span class="text-orange-500">RUN A VOYAGE</span></h2>
+                </div>
+                <button id="btnCloseInstructionsModal" class="text-slate-400 hover:text-orange-400 p-1.5 rounded-lg hover:bg-slate-900 transition-colors cursor-pointer" title="Close">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 text-sm text-slate-300">
+                <ol class="space-y-4 list-decimal list-outside ml-4 marker:text-orange-500 marker:font-bold">
+                    <li><span class="font-bold text-white">Set the two ports.</span> Click the map to drop the departure pin, then the destination pin. The pathfinder replans on every change.</li>
+                    <li><span class="font-bold text-white">Describe the vessel.</span> Open the vessel panel and enter length, beam, draft, capacity and engine rating. Every fuel and speed figure is derived from these — defaults are a generic 120&nbsp;t ferry.</li>
+                    <li><span class="font-bold text-white">Choose the conditions.</span> Pick a weather preset, or <span class="text-sky-300 font-semibold">Live conditions at vessel position</span> to pull the real sea state at the boat's coordinates.</li>
+                    <li><span class="font-bold text-white">Add hazards.</span> The obstacle and storm tools place avoidance zones. Click an armed tool again to put it away.</li>
+                    <li><span class="font-bold text-white">Get under way.</span> Enter the passenger count and target crossing time, and the console solves for the throttle that meets it.</li>
+                </ol>
+
+                <div class="border border-slate-800 rounded-xl p-4 bg-slate-900/40 space-y-2">
+                    <div class="font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-circle-info text-orange-500"></i> Reading the numbers
+                    </div>
+                    <p>Every recommendation comes from the optimiser, not from a language model. Where a value is unavailable the console shows a dash rather than a guess — a dash means the optimiser was not reached, and it is a real state worth reporting.</p>
+                    <p>If the requested crossing time is faster than the hull can achieve in the current sea, the console says so and reports the time it <em class="text-white not-italic font-semibold">can</em> make instead.</p>
+                </div>
+            </div>
+
+            <div class="px-5 py-3.5 border-t border-slate-800 flex justify-end bg-slate-900/40 shrink-0">
+                <button id="btnCloseInstructionsModalBottom" class="h-8 px-4 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 transition-all active:scale-95 cursor-pointer">Got it</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Engine Telemetry Modal -->
     <div id="engineModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-[4000] hidden items-center justify-center p-3 sm:p-5 transition-opacity opacity-0">
