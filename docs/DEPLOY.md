@@ -63,7 +63,29 @@ All from `github.com/JustineSalinas/AIHackathon2026_SOLMATE_MARINE-AI`.
 > |---|---|---|
 > | **Demo URL** (submit this) | `https://solmate-marine-ai.vercel.app` | live |
 > | Advisory API | `https://marine-aisolmate-marine-ai-api.vercel.app` | live |
-> | Captain view (bridge) | not deployed | optional |
+> | Captain view (bridge) | `https://solmate-marine-ai-bridge.vercel.app` | live |
+>
+> **Deployed 2026-08-04, and it is not optional any more.** The Phase 1
+> predictive-maintenance detector is only reachable from this surface: the
+> console never calls `/maintenance` (its engine strip is a local threshold on a
+> locally computed health score). Without the bridge deployed, the one module the
+> deck sells as AI-driven maintenance has no demonstrable front end.
+>
+> ⚠️ **`NEXT_PUBLIC_API_URL` was set with a BOM on the first attempt and every
+> API call 404'd.** Piping a value into `vercel env add` from PowerShell prepends
+> a UTF-8 BOM, so the URL became `%EF%BB%BFhttps://…` — a *relative* path — and
+> the bridge showed ADVISORY OFFLINE while looking perfectly healthy otherwise.
+> `$OutputEncoding` does not fix it. What works is a BOM-less file plus cmd
+> redirection:
+>
+> ```powershell
+> [System.IO.File]::WriteAllText($f, $url, (New-Object System.Text.UTF8Encoding $false))
+> cmd /c "vercel env add NEXT_PUBLIC_API_URL production < `"$f`""
+> ```
+>
+> Verify by loading the page and reading the network panel: the requests must go
+> to `https://marine-aisolmate-…/advise`, not to a path under the bridge's own
+> host.
 >
 > **The API hostname is mangled and that is not a typo.** `vercel link`
 > pre-fills the project-name field and appends what you type, so `marine-ai` +
