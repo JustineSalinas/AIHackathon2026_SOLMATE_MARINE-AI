@@ -279,11 +279,15 @@ because it catches exactly the failures a judge would hit.
 
 ## Checklist before submitting the links
 
-- [ ] GitHub repository is **public** (verified 2026-08-03: HTTP 200)
+- [ ] GitHub repository is **private**, with `github.com/aifesthackathon` added
+      as a viewer. Confirmed with the organizers 2026-08-03: private is what
+      they want, and the "public or immediate DQ" rule applies to the **demo
+      URL** only. Verify the collaborator invite is *accepted*, not merely sent
+      — a private repo the judges cannot open scores the same as no repo
 - [ ] **Everything is pushed.** The repo is a graded deliverable in its own
       right ("clean, documented source code"), and an unpushed working tree is
-      the failure mode this project has actually had — on 2026-08-03 the public
-      repo was three days behind and did not contain `apps/console`, the
+      the failure mode this project has actually had — on 2026-08-03 the remote
+      was three days behind and did not contain `apps/console`, the
       advisory layer, or the `anthropic` dependency the deck cites.
 - [ ] Demo URL loads for a signed-out visitor in a private window
 - [ ] Vercel **Deployment Protection is off on all three projects** — it is on

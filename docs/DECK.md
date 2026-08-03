@@ -56,7 +56,7 @@ use must be declared in the deck** (Slide 4).
 - Marine-AI
 - *A retrofittable AI advisory system for Philippine diesel passenger boats.*
 - Team SOLMATE · National AI Hackathon 2026 · Blue Economy / Clean Energy track
-- Public demo URL · public repo URL (both must resolve — required, or DQ)
+- Public demo URL (must resolve signed-out, or DQ) · private repo URL, organizers added as viewers
 
 **Speaker notes:** One sentence. "We make boats already in the water burn less
 fuel, break down less, and prove it — without replacing the boat or the engine."
@@ -572,9 +572,13 @@ the Q&A — the deviations slide means we welcome the hard questions.
 - [ ] All external resources documented and disclosed.
       ✔ `docs/THIRD-PARTY.md`
 
-> **The private-vs-public tension is unresolved and needs an organizer's answer.**
-> The orientation slide says create a *private* repository with organizers as
-> viewers; the brief PDF says every submission link must be public or it is
-> immediate disqualification. The most likely reading is that the *development
-> repo* is private and the *demo URL* is public — but "most likely" is not good
-> enough for a disqualification criterion. Ask, and record the answer here.
+> **Resolved 2026-08-03 — the repository stays PRIVATE.** Confirmed with the
+> organizers. The orientation slide (private repo, organizers added as viewers)
+> governs; the brief PDF's "public or immediate DQ" applies to the **demo URL**,
+> not the source repository.
+>
+> This reading is now settled, so the requirement flips: `aifesthackathon` being
+> present as a viewer is what makes the repo submittable. Losing that access is
+> the DQ risk here, not the repo being private. Re-check the collaborator list
+> before submitting — a private repo the judges cannot open scores as no repo
+> at all.
