@@ -224,10 +224,36 @@
                                          bottom dots were being shaved flat. -->
                                     <mask id="mai-route-mask" maskUnits="userSpaceOnUse"
                                           x="0" y="-10" width="380" height="72">
+                                        <!-- The mask's path is deliberately LONGER
+                                             than the visible one: a short tangent
+                                             lead-in before the first dot and
+                                             lead-out past the last. Both ends
+                                             matter, and each fixes a different
+                                             bug.
+
+                                             Round caps could not stay. At
+                                             dashoffset:100 the next dash begins
+                                             exactly on path position 100, and its
+                                             round START CAP renders as a blob
+                                             there even at zero reveal -- that blob
+                                             sat in the mask from first paint and
+                                             unmasked the final dot, so one lone
+                                             circle was visible from ~0ms until the
+                                             draw began at 1060ms.
+
+                                             But butt caps alone then SLICED the
+                                             first and last dots, because the
+                                             mask's flat edge lands exactly on the
+                                             dots centred at positions 0 and 100.
+                                             Extending the path past both is what
+                                             lets a butt cap be clean: the flat
+                                             edges now fall in empty space, so the
+                                             reveal is empty at rest and covers
+                                             every dot whole when complete. -->
                                         <path class="splash-route-reveal"
-                                              d="M14 31C120 56 250 54 362 19"
+                                              d="M0 28L14 31C120 56 250 54 338 21L352 16"
                                               stroke="#fff" stroke-width="24" fill="none"
-                                              stroke-linecap="round" pathLength="100"/>
+                                              stroke-linecap="butt" pathLength="100"/>
                                     </mask>
                                 </defs>
                                 <!-- ONE cubic, both endpoints solved rather than
@@ -239,11 +265,14 @@
                                        dart lower-left  -> (352.2, 17.5)
                                        dart base/fold   -> (380.3, 23.4)
 
-                                     The curve ENDS at (362,19), which lies on the
-                                     segment between those two -- i.e. exactly on
-                                     the dart's base edge, so the track runs up to
-                                     the hull and disappears under it instead of
-                                     stopping short of it.
+                                     The curve ENDS at (338,21), solved so the
+                                     final dot's outer edge clears the dart's
+                                     leftmost ink by 14px. Ending it ON the base
+                                     edge (362,19) was worse: the dot touched the
+                                     hull and read as stuck to its back rather
+                                     than as the last fix before it. The track
+                                     should arrive at the vessel, not collide
+                                     with it.
 
                                      It STARTS at (14,31), the ring's own centre,
                                      so the route leaves the origin rather than
@@ -254,17 +283,17 @@
                                      marker, which is how a chart draws one.
 
                                      pathLength normalises the curve to 100 so the
-                                     period can be chosen to DIVIDE it: 100/17
+                                     period can be chosen to DIVIDE it: 100/16
                                      places a dot at 0 AND at 100, putting one on
-                                     the origin and one on the hull, at 30.5px
-                                     spacing. The route box's scale is uniform
-                                     (x 0.013684 vs y 0.013692 em/unit), so the
-                                     dash advances at a constant rate along the
-                                     whole trajectory. -->
-                                <path d="M14 31C120 56 250 54 362 19"
+                                     the origin and one at the arrival point, at
+                                     30.2px spacing. The route box's scale is
+                                     uniform (x 0.013684 vs y 0.013692 em/unit),
+                                     so the dash advances at a constant rate along
+                                     the whole trajectory. -->
+                                <path d="M14 31C120 56 250 54 338 21"
                                       stroke="#f2731c" stroke-width="10" fill="none"
                                       stroke-linecap="round"
-                                      pathLength="100" stroke-dasharray="0.1 5.782353"
+                                      pathLength="100" stroke-dasharray="0.1 6.15"
                                       mask="url(#mai-route-mask)"/>
                                 <!-- On the path, not floating above it. The ring
                                      is the departure point, so the first dot has
