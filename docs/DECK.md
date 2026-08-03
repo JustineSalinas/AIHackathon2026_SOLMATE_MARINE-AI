@@ -512,7 +512,7 @@ your answer to a hostile question.
 - Team SOLMATE — roles.
 - One line: *"Marine-AI: less fuel, fewer breakdowns, and the receipts to prove
   it — on the boats that are already out there."*
-- Public demo URL · repo URL · this deck.
+- **Live demo: solmate-marine-ai.vercel.app** · repo · screencast · this deck.
 
 **Speaker notes:** Close on the retrofit promise and the honesty posture. Invite
 the Q&A — the deviations slide means we welcome the hard questions.

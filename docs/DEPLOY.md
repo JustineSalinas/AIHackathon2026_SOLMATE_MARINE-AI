@@ -57,6 +57,22 @@ All from `github.com/JustineSalinas/AIHackathon2026_SOLMATE_MARINE-AI`.
 > private**: Vercel deploys from a private repo perfectly well, and the Demo URL
 > must still be reachable by a signed-out visitor.
 
+> **Deployed 2026-08-03. The live hostnames are:**
+>
+> | What | URL | Status |
+> |---|---|---|
+> | **Demo URL** (submit this) | `https://solmate-marine-ai.vercel.app` | live |
+> | Advisory API | `https://marine-aisolmate-marine-ai-api.vercel.app` | live |
+> | Captain view (bridge) | not deployed | optional |
+>
+> **The API hostname is mangled and that is not a typo.** `vercel link`
+> pre-fills the project-name field and appends what you type, so `marine-ai` +
+> `solmate-marine-ai-api` became one string. Renaming the project afterwards did
+> **not** move the domain: `solmate-marine-ai-api.vercel.app` returns
+> `DEPLOYMENT_NOT_FOUND`. The mangled host is the one that resolves, so it is
+> what `MARINE_AI_API_URL` must point at. Clear the field before typing if you
+> ever rebuild these projects.
+
 | Project | Root Directory | Serves | Config |
 |---|---|---|---|
 | `solmate-marine-ai` | `apps/console` | The console — **this is the Demo URL** | `apps/console/vercel.json` |

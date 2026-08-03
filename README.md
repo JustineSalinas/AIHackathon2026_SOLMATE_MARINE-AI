@@ -10,7 +10,9 @@ recommended throttle setting.
 
 No new vessel. No engine replacement. It installs onto boats already in service.
 
-- **Live demo:** _(deployed before the sprint — see `docs/DEPLOY.md`)_
+- **Live demo:** **<https://solmate-marine-ai.vercel.app>** — the navigation
+  console, backed by the live advisory API. Every number on it is computed
+  server-side; nothing in the browser does physics.
 - **Project overview and status:** [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md)
 - **Data sources and licences:** [`docs/DATA.md`](docs/DATA.md)
 - **Third-party resources and licences:** [`docs/THIRD-PARTY.md`](docs/THIRD-PARTY.md)
