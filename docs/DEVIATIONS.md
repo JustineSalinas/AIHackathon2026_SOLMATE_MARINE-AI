@@ -310,7 +310,7 @@ on real data (`services/route/train.py`, `services/route/dataset.py`):
 gradient-boosted regressors (XGBoost, served through ONNX) for wind and wave
 *direction*; a climatological lookup table (mean by grid point, 3-hour bucket
 and month) for wind speed, wave height, current speed and current direction.
-Trained on 2.6 years of real hourly data pulled from Open-Meteo's Historical
+Trained on 2.5 years of real hourly data pulled from Open-Meteo's Historical
 Weather and Marine Weather APIs (`data/registry.py`:
 `open-meteo-weather-archive`, `open-meteo-marine-archive`) over a 3x3 grid
 spanning the Iloilo Strait operating box. `RouteRecommendation.forecast_source`
@@ -389,7 +389,7 @@ above.
 | # | Profile says | Build does | Status |
 |---|---|---|---|
 | A | Claude natural-language advisor writes the bridge sentence | Built. Claude re-words the throttle, route and health advisories; the rewrite is checked against the deterministic sentence and discarded if it changed a number or gave an order. `advisory_source` reports `"claude"` or `"template"` per frame | **Built** (2026-07-30) |
-| B | Temporal Fusion Transformer forecasts along candidate routes | Gradient-boosted regression (wind/wave direction) + a climatological lookup table (wind/wave/current magnitude and current direction), trained on 2.6 years of real Open-Meteo reanalysis data. `forecast_source="gbm_climatology"` | **Built** (2026-07-30) — decision recorded in §13 |
+| B | Temporal Fusion Transformer forecasts along candidate routes | Gradient-boosted regression (wind/wave direction) + a climatological lookup table (wind/wave/current magnitude and current direction), trained on 2.5 years of real Open-Meteo reanalysis data. `forecast_source="gbm_climatology"` | **Built** (2026-07-30) — decision recorded in §13 |
 | C | MPC loop re-solves the route continuously | Brute-force candidate sweep, re-planned on event | **Not built** |
 | F | MQTT telemetry transport | HTTP/JSON | **Not built** |
 | G | Phase 1 detector pretrained on NASA C-MAPSS | Dataset downloaded and registered; the detector fits a per-vessel baseline instead | **Not built** |

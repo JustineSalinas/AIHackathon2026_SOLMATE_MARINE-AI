@@ -15,7 +15,7 @@ So the forecaster is trained to predict the **climatological expectation** at
 a position and an absolute time: what does this stretch of the Iloilo Strait
 typically do at this hour, this time of year? That is the direct generalisation
 of `AnalyticFieldForecast` -- already position- and time-of-day only, no live
-input -- now fit to 2.6 years of real Open-Meteo reanalysis and wave-model data
+input -- now fit to 2.5 years of real Open-Meteo reanalysis and wave-model data
 (`open-meteo-weather-archive`, `open-meteo-marine-archive` in
 `data/registry.py`) instead of hand-picked sinusoid parameters. Any lead time
 the planner asks for, from ten minutes to ten hours out, is answerable the same

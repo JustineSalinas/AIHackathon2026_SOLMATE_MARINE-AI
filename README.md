@@ -42,7 +42,7 @@ source URL, and retrieval date. Summary:
 | Component | Origin |
 |---|---|
 | Fuel-consumption model | Trained by us (XGBoost) on the UCI *Condition Based Maintenance of Naval Propulsion Plants* dataset. **Gas turbine data used as a documented proxy for diesel** — see `docs/DATA.md`. |
-| Weather / wave / current forecasting | Trained by us on 2.6 years of real Open-Meteo reanalysis and wave-model history (`forecast_source="gbm_climatology"`): gradient-boosted regression for wind/wave direction, a climatological lookup table for wind/wave/current magnitude and current direction — whichever won per target on held-out data. **Not a Temporal Fusion Transformer** — `/route` has no live sea-state history to forecast forward from, so a sequence model has nothing to fuse; see [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md) §13. Falls back to a deterministic analytic field (`forecast_source="analytic_field"`) if the artifact is absent. |
+| Weather / wave / current forecasting | Trained by us on 2.5 years of real Open-Meteo reanalysis and wave-model history (`forecast_source="gbm_climatology"`): gradient-boosted regression for wind/wave direction, a climatological lookup table for wind/wave/current magnitude and current direction — whichever won per target on held-out data. **Not a Temporal Fusion Transformer** — `/route` has no live sea-state history to forecast forward from, so a sequence model has nothing to fuse; see [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md) §13. Falls back to a deterministic analytic field (`forecast_source="analytic_field"`) if the artifact is absent. |
 | Anomaly detection (Phase 1) | Trained by us: an ensemble of a robust per-stream z-score and a **PCA linear autoencoder**, learned from the vessel's own baseline. Pure NumPy — no scikit-learn/scipy in the serving image. NASA C-MAPSS informs the run-to-failure methodology. FEMTO/PRONOSTIA is named in the profile but **is not used** — 25.6 kHz bench-rig vibration vs. a ~1 Hz retrofit IMU. See [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md). |
 | Natural-language advisory | Anthropic Claude API (`claude-opus-5`), used for phrasing only. Its rewrite is checked against the deterministic sentence it was asked to reword and discarded if it changed a number or gave an order — see [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md). |
 | Chart geometry | Natural Earth 10m coastline (public domain), extracted to the demo route by `data/build_chart.py`. GEBCO bathymetry is the intended source for the depth constraint and **is not yet integrated** — see [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md). |
@@ -139,7 +139,7 @@ template ships immediately. See `services/advisory/`.
 ### 5. Test
 
 ```bash
-pytest                                  # 276 tests
+pytest                                  # 334 tests
 ruff check apps services packages tests data
 cd apps/bridge && npx tsc --noEmit && npx eslint .
 ```

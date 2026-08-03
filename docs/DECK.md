@@ -181,12 +181,22 @@ failure history that would justify it exists.
 > **Build status note (delete before pitch):** the Phase-1 anomaly detector is
 > **built, tested and live on the display** — a pure-numpy ensemble of a robust
 > per-stream z-score and a PCA linear autoencoder, served by `POST /maintenance`
-> and rendered in the bridge Health zone. The demo beat to rehearse: open the
-> throttle and coolant *and* exhaust temperature both rise, and the panel stays
-> **nominal** (measured anomaly score 0.09) — because that correlation is what a
-> healthy engine does and the joint model learned it. Then inject a coolant creep
-> alone and it flags at 0.99, naming the coolant stream. A threshold detector
-> would have alarmed on the first and it is worth saying so out loud.
+> and rendered in the bridge Health zone.
+>
+> The demo beat to rehearse, **re-measured live against the running API on
+> 2026-08-03**: hold the coolant gauge at the *same* reading, 87.4 °C, and change
+> only how it got there. Reached by a load-coupled rise — coolant, exhaust
+> temperature, NOx and vibration all moving together the way they do when the
+> throttle opens — it scores **0.30 and stays nominal**. Reached by a coolant
+> creep on its own it scores **0.62 and flags**, naming the coolant stream. Same
+> number on the gauge, opposite verdict: that correlation is what the PCA half
+> learned, and a threshold detector cannot tell the two apart. Push the creep
+> further and it saturates — coolant at 98 °C alone scores **0.9998**.
+>
+> The old "0.09 vs 0.99" pair in this note was **not reproducible** from the API
+> and has been replaced by the measured figures above. Quote the constant-gauge
+> pair, not a lone low number: holding the reading fixed is what makes the point
+> unarguable.
 
 ---
 
@@ -236,7 +246,7 @@ green-finance stakeholder — a third of the problem statement).
   not costed) and **forecast wave height**.
 - Honest baseline delta: savings = direct-route burn − planned-route burn, shown
   with its real sign.
-- The forecast behind every leg is **trained on 2.6 years of real Open-Meteo
+- The forecast behind every leg is **trained on 2.5 years of real Open-Meteo
   reanalysis data**, not a hand-tuned field: gradient-boosted regression for
   wind/wave direction, a climatological lookup table for the rest — whichever
   won, per target, on six months of held-out weather. `forecast_source` says
@@ -257,7 +267,7 @@ held-out real weather, and the table won on five of them. Both halves shipped.
 
 > **Build status note (delete before pitch):** the route engine, its constraints,
 > the `POST /route` API and the bridge Route zone that consumes it are built and
-> tested (276 tests green). The learned forecaster is **built** as of
+> tested (334 tests green). The learned forecaster is **built** as of
 > 2026-07-30 (`services/route/train.py`, `docs/DEVIATIONS.md` §13):
 > gradient-boosted regression for wind/wave direction plus a climatological
 > lookup table for wind/wave/current magnitude and current direction, trained
@@ -465,7 +475,11 @@ the Q&A — the deviations slide means we welcome the hard questions.
 - **A3 — Route costing detail:** candidate sweep, per-leg optimiser reuse, the
   1e-6 agreement test.
 - **A4 — The wear→fuel bridge:** EGT-excess-over-baseline as the wear signal
-  (r=0.99 in training), ratio-against-healthy to cancel boundary bias.
+  (**r = 0.97–0.997 at fixed load**, mean 0.986 across the seven load points),
+  ratio-against-healthy to cancel boundary bias. Say "at fixed load" out loud:
+  pooled across loads r is 0.86, because load moves both variables, and that is
+  exactly why `load_fraction` is the model's second feature rather than a
+  nuisance to be averaged away.
 - **A5 — Full deviations table** (12 deliberate departures from `DEVIATIONS.md`,
   plus the "Still outstanding" table of what is not built yet). Bring both. The
   second one is the harder slide and the more convincing one.

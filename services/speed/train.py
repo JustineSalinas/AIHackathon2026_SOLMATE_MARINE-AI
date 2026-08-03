@@ -191,7 +191,14 @@ def train(*, artifact_path: Path = ARTIFACT_PATH, verbose: bool = True) -> dict:
             "rows_used": int(len(ds.frame)),
             "rows_dropped": int(ds.rows_dropped),
             "excluded_lever_speeds_kn": list(EXCLUDED_LEVER_SPEEDS_KN),
-            "distinct_load_points": int(ds.frame.load_fraction.nunique()),
+            # Distinct *lever positions*, not distinct load_fraction floats. The
+            # grid is factorial: load is commanded at a handful of lever settings
+            # and load_fraction is a near-continuous quantity derived from the
+            # measured torque, so nunique() on it returns ~one value per row
+            # (9207 of 9282) and reads as dense sampling of an axis that is
+            # actually coarse. That inverts the limitation this card exists to
+            # disclose.
+            "distinct_load_points": int(ds.frame.lever_position.nunique()),
             "distinct_wear_states": int(ds.frame.degradation_state_id.nunique()),
             "load_fraction_range": [
                 float(ds.frame.load_fraction.min()),
@@ -208,9 +215,9 @@ def train(*, artifact_path: Path = ARTIFACT_PATH, verbose: bool = True) -> dict:
             "selected": best.name,
         },
         "known_limits": [
-            f"Load is sampled at only {ds.frame.load_fraction.nunique()} distinct points. "
-            "The wear axis is densely sampled and trustworthy; the load axis is "
-            "interpolated between coarse steps.",
+            f"Load is commanded at only {ds.frame.lever_position.nunique()} distinct lever "
+            "positions. The wear axis is densely sampled and trustworthy; the load "
+            "axis is interpolated between coarse steps.",
             "Trained on a gas turbine. Only the dimensionless wear penalty is "
             "transferred; absolute fuel level comes from a diesel BSFC curve.",
             "Wind, current, wave height and passenger load do not vary in this "
