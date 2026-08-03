@@ -2351,10 +2351,24 @@ import "driver.js/dist/driver.css";
         // conversion happens once, server-side in app.ts (`throttlePctFromRpm`);
         // this only displays it. Null means no recommendation was returned, and a
         // dash is the honest reading -- never a carried-over or default number.
-        function renderRecThrottleHud() {
+        // Renders both halves of the optimiser's throttle advice: the setting it
+        // recommends and what that setting saves. They are written together and
+        // are meaningless apart -- a saving with no throttle to reach it is not
+        // an instruction a captain can act on.
+        //
+        // `savings` is litres per hour from /advise, which is NOT the sidebar's
+        // "Est. Fuel Saving" -- that one is a percentage against the direct track
+        // from /route. Two different questions, so the unit is on the label to
+        // keep them from being read as the same number.
+        function renderAdvisoryHud() {
             const pct = State.ai.recThrottle;
-            const ok = pct != null && Number.isFinite(pct);
-            updateDisplayValue('outHudRecThrottle', ok ? pct.toFixed(0) : '—');
+            const lph = State.ai.savings;
+            const okPct = pct != null && Number.isFinite(pct);
+            const okLph = lph != null && Number.isFinite(lph);
+            updateDisplayValue('outHudRecThrottle', okPct ? pct.toFixed(0) : '—');
+            // A negative saving is a real answer -- the recommendation can cost
+            // fuel to hold a schedule -- so the sign is kept rather than clamped.
+            updateDisplayValue('outHudRecSaving', okLph ? lph.toFixed(1) : '—');
         }
 
         function log(msg, type = 'info') {
@@ -4504,7 +4518,7 @@ function refreshAnalyticsSidebar() {
                          NavEngine.isFetching = false;
                          State.ai.recThrottle = result.ok ? result.recThrottle : null;
                          State.ai.savings = result.ok ? result.savingsLph : null;
-                         renderRecThrottleHud();
+                         renderAdvisoryHud();
                          renderAdvisory(result);
 
                          // Sea-state abort is a deterministic client-side rule
@@ -4537,7 +4551,7 @@ function refreshAnalyticsSidebar() {
                  // same readout as a model output. A dash is the truth.
                  State.ai.recThrottle = null;
                  State.ai.savings = null;
-                 renderRecThrottleHud();
+                 renderAdvisoryHud();
                  renderAdvisory(null);
 
                  const routeStatusEl = document.getElementById('outRouteStatus');
