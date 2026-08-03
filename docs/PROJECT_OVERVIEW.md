@@ -274,4 +274,5 @@ until then).
 | `PRODUCT.md` | What the display is for (the captain's 2-second glance) |
 | `README.md` | Setup & run instructions |
 
-**Repo:** github.com/JustineSalinas/MARINE-AI---National-AI-Hackathon---AI-Fest
+**Repo:** github.com/JustineSalinas/AIHackathon2026_SOLMATE_MARINE-AI (private;
+`aifesthackathon` added as a viewer per the hackathon rules)

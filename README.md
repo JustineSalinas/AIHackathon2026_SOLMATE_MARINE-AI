@@ -103,7 +103,7 @@ source URL, and retrieval date. Summary:
 | Fuel-consumption model | Trained by us (XGBoost) on the UCI *Condition Based Maintenance of Naval Propulsion Plants* dataset. **Gas turbine data used as a documented proxy for diesel** — see `docs/DATA.md`. |
 | Weather / wave / current forecasting | Trained by us on 2.5 years of real Open-Meteo reanalysis and wave-model history (`forecast_source="gbm_climatology"`): gradient-boosted regression for wind/wave direction, a climatological lookup table for wind/wave/current magnitude and current direction — whichever won per target on held-out data. **Not a Temporal Fusion Transformer** — `/route` has no live sea-state history to forecast forward from, so a sequence model has nothing to fuse; see [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md) §13. Falls back to a deterministic analytic field (`forecast_source="analytic_field"`) if the artifact is absent. |
 | Anomaly detection (Phase 1) | Trained by us: an ensemble of a robust per-stream z-score and a **PCA linear autoencoder**, learned from the vessel's own baseline. Pure NumPy — no scikit-learn/scipy in the serving image. NASA C-MAPSS informs the run-to-failure methodology. FEMTO/PRONOSTIA is named in the profile but **is not used** — 25.6 kHz bench-rig vibration vs. a ~1 Hz retrofit IMU. See [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md). |
-| Natural-language advisory | Anthropic Claude API (`claude-opus-5`), used for phrasing only. Its rewrite is checked against the deterministic sentence it was asked to reword and discarded if it changed a number or gave an order — see [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md). |
+| Natural-language advisory | **Two providers, either used for phrasing only.** Anthropic Claude (`claude-opus-5`) and Google Gemini (`gemini-flash-lite-latest`). Whichever answers, the rewrite is checked against the deterministic sentence it was asked to reword and discarded if it changed a number or gave an order; `advisory_source` reports which one the frame is carrying. **Gemini is the default when `GOOGLE_API_KEY` is set** — set `MARINE_AI_ADVISORY_PROVIDER=claude` to force Anthropic. See [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md) and [`docs/THIRD-PARTY.md`](docs/THIRD-PARTY.md). |
 | Chart geometry | Natural Earth 10m coastline (public domain), extracted to the demo route by `data/build_chart.py`. GEBCO bathymetry is the intended source for the depth constraint and **is not yet integrated** — see [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md). |
 
 No pretrained model weights from third parties are shipped in this repository.
@@ -115,8 +115,8 @@ No pretrained model weights from third parties are shipped in this repository.
 Requires **Python 3.11+** and **Node 20+**. Docker is optional (local edge stack only).
 
 ```bash
-git clone https://github.com/<org>/marine-ai.git
-cd marine-ai
+git clone https://github.com/JustineSalinas/AIHackathon2026_SOLMATE_MARINE-AI.git
+cd AIHackathon2026_SOLMATE_MARINE-AI
 ```
 
 ### 1. Python services
@@ -124,8 +124,15 @@ cd marine-ai
 ```bash
 pip install uv                      # if you don't have it
 uv venv --python 3.11
-uv pip install -e ".[train,dev]"    # omit [train] to skip torch (~2 GB)
+uv pip install -e ".[dev]"          # everything needed to run and test
 ```
+
+**`[dev]` is all you need to run the system, the demo and the full test suite.**
+Add `[train]` only to *retrain* the fuel model from scratch — it pulls roughly
+2 GB, most of which is PyTorch left over from the Temporal Fusion Transformer
+that was evaluated and then dropped in favour of gradient boosting plus a
+climatological table (`docs/DEVIATIONS.md` §13). Nothing in the codebase imports
+`torch` today; retraining needs only `skl2onnx` from that group.
 
 Activate the venv: `source .venv/bin/activate` (macOS/Linux) or
 `.venv\Scripts\activate` (Windows).
@@ -158,19 +165,42 @@ condition is then assumed healthy, confidence is reduced, and every response
 says so via `model_trained: false`. The display falls back to a schematic
 outline without the chart file.
 
-*Built and served today: Speed, Route, and Phase 1 Predictive Maintenance.
-Gated / roadmap: the learned route forecaster (analytic field runs in its place)
-and Phase 2 remaining-useful-life. See [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md).*
+*Built and served today: Speed, Route, Phase 1 Predictive Maintenance, the
+auditable emissions layer, and the learned route forecaster — `/route` reports
+`forecast_source="gbm_climatology"` when its artifacts are present and degrades
+to `"analytic_field"` when they are not. Roadmap: Phase 2 remaining-useful-life,
+GEBCO depth, and fitting the health baseline from a vessel's own logged history
+instead of the synthetic default. See [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md).*
 
 ### 4. Run
 
-Two processes. First the advisory API:
+**The advisory API first — both front-ends are useless without it.** Every number
+either of them shows comes from here:
 
 ```bash
 uvicorn apps.api.main:app --reload      # http://localhost:8000
 ```
 
-Then, in a second terminal, the bridge display:
+Then pick a front-end. They are two different views of the same API, and the
+**console is the one to open first** — it is the demo surface:
+
+**a) Navigation console** — chart, pathfinder, voyage simulation. *This is the
+public Demo URL.*
+
+```bash
+cd apps/console
+npm install
+npm run dev                             # http://localhost:3200
+```
+
+It reads `MARINE_AI_API_URL`, defaulting to `http://127.0.0.1:8000`, so with the
+API on its default port there is nothing to configure — **and no CORS setup
+either**, because the console's Express server calls the API itself and the
+browser only ever talks to `localhost:3200`. Drop the departure and destination
+pins on the map, then press **Start**.
+
+**b) Bridge display** — the captain's-eye view, with the four camera modes and
+the procedural helm horizon.
 
 ```bash
 cd apps/bridge
@@ -179,21 +209,30 @@ npm run dev                             # http://localhost:3000
 npm run dev -- --port 3100              # …or pick another port
 ```
 
-The API accepts `localhost` on ports 3000, 3001 and 3100 out of the box. To use
-any other origin, set `MARINE_AI_CORS_ORIGINS` for the API and
+The bridge calls the API straight from the browser, so it is the one that needs
+CORS: the API allows `localhost` and `127.0.0.1` on ports 3000, 3001 and 3100 out
+of the box. For any other origin set `MARINE_AI_CORS_ORIGINS` for the API and
 `NEXT_PUBLIC_API_URL` for the display.
 
-Open the display, press **Start voyage**, and switch between the four views —
+On the bridge display, press **Start voyage** and switch between the four views —
 *North-up*, *Course-up*, *Follow*, and *Helm*. Nothing in the browser computes
 physics: every speed, burn and recommendation comes from `POST /advise`. Kill
 the API mid-voyage and the display ages its last known values visibly rather
 than blanking, which is the designed behaviour for routes that lose signal.
 
-The advisory sentence is Claude-phrased when `ANTHROPIC_API_KEY` is set and the
-deterministic template otherwise (`advisory_source` says which, per frame). The
-display never blocks on it: on Vercel the rewrite is fetched synchronously
-under a short timeout; everywhere else it is fetched in the background and the
-template ships immediately. See `services/advisory/`.
+The advisory sentence is model-phrased when either `GOOGLE_API_KEY` or
+`ANTHROPIC_API_KEY` is set, and the deterministic template otherwise —
+`advisory_source` says which, per frame. Google wins when both keys are present;
+`MARINE_AI_ADVISORY_PROVIDER=claude` overrides that.
+
+**The first request for any given advice always reads `template`, by design.**
+The display never blocks on a rewrite: off Vercel the template ships immediately
+and the rewrite is fetched in the background, so it arrives on the next poll a
+second later. On Vercel the instance can be frozen the moment it responds — there
+is no background to speak of — so the call blocks under a short timeout instead.
+The cache key is the deterministic sentence itself, so two requests that reached
+the same decision share one entry and a whole crossing costs a handful of calls.
+See `services/advisory/`.
 
 ### 5. Test
 

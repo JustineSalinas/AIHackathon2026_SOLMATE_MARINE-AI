@@ -46,7 +46,16 @@ Three independent things cause it, and all three are silent:
 
 ## Three Vercel projects, one repository
 
-All from `github.com/JustineSalinas/MARINE-AI---National-AI-Hackathon---AI-Fest`.
+All from `github.com/JustineSalinas/AIHackathon2026_SOLMATE_MARINE-AI`.
+
+> Renamed 2026-08-03 to the format the hackathon rules require
+> (`AIHackathon2026_TeamName_ProjectTitle`), and switched to **private** with
+> `github.com/aifesthackathon` added as a viewer. GitHub redirects the old URL,
+> so an existing clone keeps working — but run
+> `git remote set-url origin <new URL>` anyway rather than depending on a
+> redirect. **The repository being private does not make the deployed demo
+> private**: Vercel deploys from a private repo perfectly well, and the Demo URL
+> must still be reachable by a signed-out visitor.
 
 | Project | Root Directory | Serves | Config |
 |---|---|---|---|
