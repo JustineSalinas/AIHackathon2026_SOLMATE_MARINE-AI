@@ -160,6 +160,13 @@ class MaintenanceRequest(BaseModel):
     frames: list[TelemetryFrame] = Field(
         min_length=1, description="Recent frames, oldest first. A minute or two is plenty."
     )
+    baseline_frames: list[TelemetryFrame] | None = Field(
+        None,
+        description="Frames the caller asserts are HEALTHY for this vessel. Supplied, "
+        "the detector fits a baseline to this engine instead of scoring against the "
+        "served reference engine -- which is the difference between 'deviating from "
+        "its own normal' and 'not being the demo engine'. Omit to use the default.",
+    )
     observed_hours: float | None = Field(
         None,
         ge=0,

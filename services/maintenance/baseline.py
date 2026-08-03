@@ -284,3 +284,56 @@ def synthetic_healthy_baseline(
     z = load[:, None] * load_gain + noise * 0.6
     rows = _HEALTHY_MEAN + z * _HEALTHY_SIGMA
     return VesselBaseline.fit(rows, observed_hours=observed_hours)
+
+
+MIN_BASELINE_CHUNKS = 8
+"""Feature vectors required before a fitted baseline is trusted over the default.
+`VesselBaseline.fit` needs two; eight is where the median-and-MAD scale stops
+being an artefact of which frames happened to arrive."""
+
+
+def fit_from_frames(
+    frames: Sequence[TelemetryFrame],
+    *,
+    observed_hours: float,
+    chunk: int = 8,
+) -> VesselBaseline:
+    """Fit a baseline from frames the caller asserts are healthy.
+
+    This is the answer to the gap `DATA.md` records as Bias 3: the served default
+    describes a *modelled* engine, so a vessel whose normal differs -- a 24V loom
+    where the reference assumes 12V, oil pressure in a different range -- is
+    scored against someone else's engine and reads as broken from the first
+    frame. Fitting here means the detector learns THIS boat's normal and reports
+    deviation from it, which is the only reading of "anomaly" that means anything
+    on a retrofit.
+
+    Frames are chunked, and each chunk reduces to one feature vector, because the
+    detector scores windows rather than instants -- the training rows have to be
+    the same kind of object as the thing later scored, or the scale is fitted to
+    per-sample noise the detector never sees.
+
+    Channels this kit does not report come back as nan. They are never scored
+    (`detect` masks them the same way), but they cannot stay nan here or the
+    median and MAD below would poison the whole column. They are parked on the
+    reference engine's own centre, where they sit inert.
+    """
+    if len(frames) < chunk * 2:
+        raise ValueError(
+            f"need at least {chunk * 2} frames to fit a baseline, got {len(frames)}"
+        )
+
+    rows = []
+    for start in range(0, len(frames) - chunk + 1, chunk):
+        values, _present = extract_features(frames[start : start + chunk])
+        rows.append(values)
+    matrix = np.asarray(rows, dtype=float)
+
+    for column in range(matrix.shape[1]):
+        finite = np.isfinite(matrix[:, column])
+        if not finite.any():
+            matrix[:, column] = _HEALTHY_MEAN[column]
+        elif not finite.all():
+            matrix[~finite, column] = float(np.median(matrix[finite, column]))
+
+    return VesselBaseline.fit(matrix, observed_hours=observed_hours)

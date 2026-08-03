@@ -15,6 +15,7 @@ browser renders; it does not decide.
 
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -46,7 +47,7 @@ from services.advisory import phrase
 from services.advisory import provider as advisory_provider
 from services.emissions import co2_kg
 from services.emissions.report import build_report, to_csv
-from services.maintenance.baseline import synthetic_healthy_baseline
+from services.maintenance.baseline import fit_from_frames, synthetic_healthy_baseline
 from services.maintenance.detector import detect
 from services.route.forecast import load_forecast
 from services.route.geo import LatLon
@@ -61,6 +62,8 @@ from services.speed.optimizer import (
     speed_for_power_kn,
 )
 from services.speed.resistance import SeaState, VesselHull
+
+logger = logging.getLogger(__name__)
 
 # Make the documented `uvicorn apps.api.main:app` command actually see `.env`.
 #
@@ -371,6 +374,27 @@ async def maintenance(req: MaintenanceRequest) -> MaintenanceStatus:
     it does not feed the anomaly score.
     """
     baseline = _state.get("maintenance_baseline")
+    # A caller that can vouch for a window of healthy frames gets a baseline fitted
+    # to ITS engine. Without this the served default decides what "normal" means,
+    # and a boat that simply differs from the reference -- 24V loom, oil pressure in
+    # another range -- is scored as faulty from its first frame. That is Bias 3 in
+    # DATA.md, and this is the path out of it.
+    # Falls back rather than failing: a window too short to fit is a caller
+    # problem, and refusing to answer at all would be a worse one.
+    if req.baseline_frames:
+        try:
+            baseline = fit_from_frames(
+                req.baseline_frames,
+                observed_hours=req.observed_hours
+                if req.observed_hours is not None
+                else 0.0,
+            )
+        except ValueError:
+            logger.warning(
+                "maintenance: %d baseline frames were not enough to fit; "
+                "scoring against the served reference engine instead",
+                len(req.baseline_frames),
+            )
     return await _phrased(
         detect(
             req.frames,
