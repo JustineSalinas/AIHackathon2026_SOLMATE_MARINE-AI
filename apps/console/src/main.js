@@ -90,7 +90,13 @@ import "driver.js/dist/driver.css";
             // returns to null once the voyage is logged. Null means "not asked".
             // `steering` is false until the vessel is first under way, so the
             // opening frame adopts its course instead of rotating onto it.
-            ship: { progress: 0, lat: 10.6928, lng: 122.5644, angle: 0, headingDeg: 0, targetHeadingDeg: 0, actualKnots: 0, distanceTraveledNM: 0, currentPax: null, steering: false },
+            // `fuelUsedL` is the voyage's fuel integral, accumulated in the same
+            // step and on the same clock as distanceTraveledNM. It has to be
+            // integrated rather than sampled: the logger writes at 1Hz, so a
+            // throttle change between samples would be invisible to a
+            // post-hoc sum, and the logger's timestamps are wall-clock while
+            // the voyage runs at the sim multiplier.
+            ship: { progress: 0, lat: 10.6928, lng: 122.5644, angle: 0, headingDeg: 0, targetHeadingDeg: 0, actualKnots: 0, distanceTraveledNM: 0, fuelUsedL: 0, currentPax: null, steering: false },
             
             basePath: [],     
             targetPath: [],   
@@ -521,6 +527,7 @@ import "driver.js/dist/driver.css";
             State.portB = null;
             State.ship.progress = 0;
             State.ship.distanceTraveledNM = 0;
+            State.ship.fuelUsedL = 0;
             State.basePath = [];
             State.targetPath = [];
             State.idealPath = [];
@@ -2592,6 +2599,9 @@ function saveTripData() {
         portA: State.portA ? State.portA.name : 'Unknown',
         portB: State.portB ? State.portB.name : 'Unknown',
         distanceNM: State.ship.distanceTraveledNM || 0,
+        // The voyage's measured fuel integral, stored alongside the distance it
+        // was burned over so L/NM is derivable without re-reading the samples.
+        fuelUsedL: State.ship.fuelUsedL || 0,
         // null, not 0, when the manifest was never taken -- an unrecorded
         // passenger count is not an empty vessel.
         pax: Number.isFinite(State.ship.currentPax) ? State.ship.currentPax : null,
@@ -2617,6 +2627,56 @@ function saveTripData() {
     }
 }
 
+
+/**
+ * Total fuel for a trip, in litres, and whether it was measured or reconstructed.
+ *
+ * Voyages logged since the fuel integral shipped carry `fuelUsedL` directly and
+ * are exact. Trips already in localStorage do not, and their samples cannot
+ * simply be integrated over their own timestamps: those are wall-clock, while
+ * the voyage ran at a sim multiplier that was never recorded, so the result
+ * would be short by whatever that multiplier happened to be -- 30x in the
+ * common case, which is not a rounding error.
+ *
+ * The distance IS in simulated units though, and so is the logged speed. That
+ * gives the voyage's true duration without needing the multiplier at all:
+ * hours = distance / mean speed. The mean burn over that duration is a sound
+ * reconstruction, and it is reported as an estimate rather than dressed up as a
+ * measurement.
+ */
+function tripFuelLitres(trip) {
+    if (trip && Number.isFinite(trip.fuelUsedL) && trip.fuelUsedL > 0) {
+        return { litres: trip.fuelUsedL, measured: true };
+    }
+    const rows = (trip && trip.data) || [];
+    const distNM = Number(trip && trip.distanceNM) || 0;
+    if (!rows.length || distNM <= 0) return { litres: null, measured: false };
+
+    let flowSum = 0, spdSum = 0, n = 0;
+    for (const r of rows) {
+        const flow = parseFloat(r.fuelFlow);
+        const spd = parseFloat(r.speedKts);
+        if (Number.isFinite(flow) && Number.isFinite(spd)) { flowSum += flow; spdSum += spd; n++; }
+    }
+    if (!n) return { litres: null, measured: false };
+
+    const meanSpd = spdSum / n;
+    if (meanSpd <= 0.05) return { litres: null, measured: false };
+    return { litres: (flowSum / n) * (distNM / meanSpd), measured: false };
+}
+
+/** "128 L" / "~128 L" / "—", plus the per-mile figure the fuel claim rests on. */
+function formatTripFuel(trip) {
+    const { litres, measured } = tripFuelLitres(trip);
+    if (!Number.isFinite(litres)) return { label: '—', title: 'No fuel data recorded for this trip.' };
+    const distNM = Number(trip && trip.distanceNM) || 0;
+    const perNM = distNM > 0 ? litres / distNM : null;
+    return {
+        label: (measured ? '' : '~') + litres.toFixed(1) + ' L',
+        title: (measured ? 'Measured fuel burn' : 'Estimated from logged flow and speed (voyage predates fuel metering)')
+            + (perNM ? ' — ' + perNM.toFixed(1) + ' L/NM' : ''),
+    };
+}
 
 function downloadTripCSV(trip) {
     const dataToDownload = trip.data;
@@ -2658,12 +2718,15 @@ function refreshAnalyticsSidebar() {
             portA: State.portA ? State.portA.name : 'Unknown',
             portB: State.portB ? State.portB.name : 'Unknown',
             distanceNM: State.ship.distanceTraveledNM || 0,
+            fuelUsedL: State.ship.fuelUsedL || 0,
             data: State.mlLogger.data
         };
         const timeStr = new Date(liveTrip.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         html += '<div class="trip-item p-2 rounded bg-slate-800 hover:bg-slate-700 cursor-pointer border border-transparent transition-colors" data-trip-id="live_trip">';
         html += '<div class="text-xs font-bold text-slate-200 flex justify-between"><span>Current Voyage</span><span class="text-sky-400">' + liveTrip.distanceNM.toFixed(1) + ' NM</span></div>';
         html += '<div class="text-xs text-slate-400 mt-1 truncate" title="' + liveTrip.portA + ' to ' + liveTrip.portB + '">' + liveTrip.portA.split('(')[0] + ' <i class="fa-solid fa-arrow-right mx-1"></i> ' + liveTrip.portB.split('(')[0] + '</div>';
+        const liveFuel = formatTripFuel(liveTrip);
+        html += '<div class="flex justify-between items-center mt-1 pt-1 border-t border-emerald-500/20"><span class="text-xs text-slate-400"><i class="fa-solid fa-gas-pump mr-1 text-amber-400/80"></i>Fuel used</span><span class="text-xs font-bold text-amber-300" id="liveFuelUsed" title="' + liveFuel.title + '">' + liveFuel.label + '</span></div>';
         html += '<div class="flex justify-between items-center mt-0.5"><div class="text-xs text-slate-500" id="liveRecordCount">' + liveTrip.data.length + ' records (Recording)</div><button class="text-xs text-slate-400 hover:text-white download-trip-btn" data-trip-id="live_trip" title="Download Live Trip CSV"><i class="fa-solid fa-download"></i></button></div></div>';
     }
     
@@ -2691,6 +2754,8 @@ function refreshAnalyticsSidebar() {
             html += '<div class="trip-item p-2 rounded bg-slate-800 hover:bg-slate-700 cursor-pointer border border-transparent transition-colors" data-trip-id="' + trip.id + '">';
             html += '<div class="text-xs font-bold text-slate-200 flex justify-between"><span>' + timeStr + '</span><span class="text-sky-400">' + trip.distanceNM.toFixed(1) + ' NM</span></div>';
             html += '<div class="text-xs text-slate-400 mt-1 truncate" title="' + trip.portA + ' to ' + trip.portB + '">' + trip.portA.split('(')[0] + ' <i class="fa-solid fa-arrow-right mx-1"></i> ' + trip.portB.split('(')[0] + '</div>';
+            const fuel = formatTripFuel(trip);
+            html += '<div class="flex justify-between items-center mt-1 pt-1 border-t border-slate-700/60"><span class="text-xs text-slate-400"><i class="fa-solid fa-gas-pump mr-1 text-amber-400/80"></i>Fuel used</span><span class="text-xs font-bold text-amber-300" title="' + fuel.title + '">' + fuel.label + '</span></div>';
             html += '<div class="flex justify-between items-center mt-0.5"><div class="text-xs text-slate-500">' + trip.data.length + ' records</div><button class="text-xs text-slate-400 hover:text-white download-trip-btn" data-trip-id="' + trip.id + '" title="Download Trip CSV"><i class="fa-solid fa-download"></i></button></div></div>';
         });
     });
@@ -2705,7 +2770,13 @@ function refreshAnalyticsSidebar() {
             const tripId = e.currentTarget.getAttribute('data-trip-id');
             let trip;
             if (tripId === 'live_trip') {
-                trip = { timestamp: new Date().toISOString(), data: State.mlLogger.data };
+                trip = {
+                    id: 'live_trip',
+                    timestamp: new Date().toISOString(),
+                    distanceNM: State.ship.distanceTraveledNM || 0,
+                    fuelUsedL: State.ship.fuelUsedL || 0,
+                    data: State.mlLogger.data,
+                };
             } else {
                 const history = getHistoricalTrips();
                 trip = history.find(t => t.id === tripId);
@@ -2838,6 +2909,7 @@ function refreshAnalyticsSidebar() {
             State.direction *= -1;
             State.ship.progress = 0;
             State.ship.distanceTraveledNM = 0;
+            State.ship.fuelUsedL = 0;
             updateRoute();
             log("Departure and arrival ports swapped automatically.", "info");
             
@@ -3901,6 +3973,11 @@ function refreshAnalyticsSidebar() {
         function calculatePhysics(throttleUser) {
             const p = computePhysicsState(throttleUser, true);
             State.ship.crabAngleDeg = p.crabAngleDeg || 0;
+            // Stashed for the manual-helm branch of updateSimulation, which has
+            // no route and so never computes physics of its own. Reusing the
+            // figure this loop already produced keeps manual mode to one physics
+            // pass per frame instead of two.
+            State.ship.lastFuelFlowLh = Number.isFinite(p.fuelFlowLh) ? p.fuelFlowLh : 0;
 
             // Environmental Data - Always displays starting once boat model is present on 2D view
             if (NavEngine.forecastData) {
@@ -4005,8 +4082,17 @@ function refreshAnalyticsSidebar() {
                 // --- NEW TELEMETRY FIELDS ---
                 // Fuel System (Medium Boat, ~800L Tank)
                 const maxFuel = 800;
-                // Calculate remaining fuel based on actual flow if possible, or simulate ~25% usage over journey
-                const currentFuel = maxFuel * (1 - State.ship.progress * 0.25);
+                // MEASURED, not modelled. This used to read
+                //     maxFuel * (1 - progress * 0.25)
+                // which made remaining fuel a function of how far along the
+                // route the vessel was -- exactly 25% of the tank consumed by
+                // arrival, every voyage, whatever the throttle, weather or
+                // distance. The physics engine's fuelFlowLh was displayed right
+                // beside it and never spent. On a product whose claim is fuel
+                // optimisation that is the one gauge that must not be
+                // decorative: raise the wind and the tank has to move too, or
+                // the demo disproves the pitch.
+                const currentFuel = Math.max(0, maxFuel - (State.ship.fuelUsedL || 0));
                 const fuelPercent = (currentFuel / maxFuel) * 100;
                 const fuelFlow = p.fuelFlowLh; // Use the exact flow calculated by physics engine
                 updateDisplayValue('fuelFlowRate', Math.round(fuelFlow).toLocaleString() + ' L/h');
@@ -4270,6 +4356,14 @@ function refreshAnalyticsSidebar() {
                         waveHt: p.waveHt.toFixed(1),
                         healthScore: health,
                         fuelFlow: p.fuelFlowLh.toFixed(1),
+                        // Instantaneous rate AND the running total. fuelFlow
+                        // alone cannot be integrated after the fact: these rows
+                        // are 1Hz wall-clock samples of a voyage running at the
+                        // sim multiplier, so the elapsed time between them is
+                        // not the elapsed time aboard. Carrying the cumulative
+                        // figure makes the total recoverable from the CSV alone
+                        // -- it is simply the last value in this column.
+                        fuelUsedL: (State.ship.fuelUsedL || 0).toFixed(2),
                         hullStress: stress.toFixed(1)
                     };
                     
@@ -4285,6 +4379,12 @@ function refreshAnalyticsSidebar() {
                         txtCount.textContent = State.mlLogger.data.length;
                         const liveRecordCount = document.getElementById("liveRecordCount");
                         if (liveRecordCount) liveRecordCount.textContent = State.mlLogger.data.length + " records (Recording)";
+                        // Ticks with the log rather than waiting for the sidebar
+                        // to re-render, so the running total is watchable while
+                        // the voyage is under way -- which is the whole point of
+                        // showing it against a live trip.
+                        const liveFuelUsed = document.getElementById("liveFuelUsed");
+                        if (liveFuelUsed) liveFuelUsed.textContent = (State.ship.fuelUsedL || 0).toFixed(1) + ' L';
                     }
                     if (window.updateAnalyticsChart) {
                         window.updateAnalyticsChart();
@@ -4680,6 +4780,17 @@ function refreshAnalyticsSidebar() {
                 
                 const stepDistanceNM = (actualKnots * simMult * deltaTime) / 3600;
                 State.ship.distanceTraveledNM = (State.ship.distanceTraveledNM || 0) + Math.abs(stepDistanceNM);
+
+                // Manual mode has no route and therefore computes no physics of
+                // its own -- the joystick is the helm, but the engine is still
+                // burning against the throttle. Reuses the flow the display loop
+                // already computed this frame rather than running the physics a
+                // second time. Same integral, same clock as the auto branch.
+                const manualFlowLh = State.ship.lastFuelFlowLh || 0;
+                if (manualFlowLh > 0) {
+                    State.ship.fuelUsedL = (State.ship.fuelUsedL || 0)
+                        + (manualFlowLh * simMult * deltaTime) / 3600;
+                }
                 
                 if (Math.abs(stepDistanceNM) > 0.000001) {
                     const headingRad = State.ship.headingDeg * Math.PI / 180;
@@ -4770,6 +4881,15 @@ function refreshAnalyticsSidebar() {
                 // Accumulate cumulative distance traveled
                 const stepDistanceNM = (actualKnots * simMult * deltaTime) / 3600;
                 State.ship.distanceTraveledNM = (State.ship.distanceTraveledNM || 0) + stepDistanceNM;
+
+                // Fuel, on the SAME step and the same clock. simMult is not
+                // optional here: distance above is simulated-time, so metering
+                // fuel in wall-clock would report a 30x voyage burning 1x of
+                // fuel and make the L/NM figure nonsense.
+                if (Number.isFinite(physics.fuelFlowLh)) {
+                    State.ship.fuelUsedL = (State.ship.fuelUsedL || 0)
+                        + (physics.fuelFlowLh * simMult * deltaTime) / 3600;
+                }
 
                 let safeTotalDistNM = isNaN(totalDistNM) || totalDistNM <= 0 ? 5.0 : totalDistNM;
                 let progressPerSecond = (actualKnots / Math.max(0.1, safeTotalDistNM)) / 3600;
@@ -5457,6 +5577,7 @@ function refreshAnalyticsSidebar() {
                         const getUnderWay = () => {
                             if (State.ship.progress === 0) {
                                 State.ship.distanceTraveledNM = 0;
+                                State.ship.fuelUsedL = 0;
                             }
                             State.isRunning = true;
                             btnStart.innerText = "Abort";
@@ -5517,6 +5638,7 @@ function refreshAnalyticsSidebar() {
                     State.direction *= -1;
                     State.ship.progress = 0;
                     State.ship.distanceTraveledNM = 0;
+                    State.ship.fuelUsedL = 0;
                     updateRoute();
                     log("Departure and arrival ports swapped.", "info");
                 });
