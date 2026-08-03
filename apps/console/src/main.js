@@ -256,7 +256,10 @@ import "driver.js/dist/driver.css";
             };
             const algoName = algoNameMap[State.pathMode] || 'Pathfinder';
 
-            if (txtTitle) txtTitle.textContent = `${algoName} + route optimiser`;
+            // The HTML default is "RRT Explorer AI Audit"; this keeps that wording
+            // and only swaps the algorithm name, so a non-RRT mode still labels
+            // itself honestly instead of inheriting RRT's title.
+            if (txtTitle) txtTitle.textContent = `${algoName} AI Audit`;
 
             const unavailable = !plan || plan.ok === false;
 
@@ -5600,9 +5603,10 @@ function refreshAnalyticsSidebar() {
             // this is the only place the default width is actually decided.
             //
             // 200 and 240 were sized around 9-11px labels. With the type floor at
-            // 12px (src/index.css) those widths wrap "Fuel saved vs direct" onto
-            // three lines and render four-line entries in the log column. The
-            // panel gets wider; the text does not get smaller again.
+            // 12px (src/index.css) those widths wrap the longest sidebar labels
+            // ("Path Generator Source", "Est. Fuel Saving") onto three lines and
+            // render four-line entries in the log column. The panel gets wider;
+            // the text does not get smaller again.
             const LEFT_MIN = 250;
             const LEFT_EXP = 340;
             const RIGHT_MIN = 300;

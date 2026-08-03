@@ -568,7 +568,7 @@
                         <button id="btnModeManual" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-bold py-1.5 rounded transition-colors">MANUAL</button>
                         <button id="btnModeActual" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-bold py-1.5 rounded transition-colors">ACTUAL</button>
                     </div>
-                    <div id="modeDescription" class="text-xs text-slate-400">Boat automatically follows the planned AI route.</div>
+                    <div id="modeDescription" class="text-xs text-slate-400">Boat automatically follows the planned route.</div>
                     <div id="gpsStatus" class="text-xs text-slate-500 font-mono hidden">Status: Waiting for signal...</div>
                 </div>
 
@@ -596,11 +596,11 @@
                         </div>
                     </div>
                     <div class="flex justify-between items-center">
-                        <div class="text-sm text-slate-400"><i class="fa-solid fa-leaf mr-2 text-emerald-500"></i>Fuel saved vs direct</div>
+                        <div class="text-sm text-slate-400"><i class="fa-solid fa-leaf mr-2 text-emerald-500"></i>Est. Fuel Saving</div>
                         <div id="outSavings" class="text-lg font-bold text-emerald-400 hud-font">+0.0%</div>
                     </div>
                     <div class="flex justify-between items-center">
-                        <div class="text-sm text-slate-400"><i class="fa-solid fa-route mr-2"></i>Route Status</div>
+                        <div class="text-sm text-slate-400"><i class="fa-solid fa-route mr-2"></i>Pathfinder Status</div>
                         <div id="outRouteStatus" class="text-sm font-bold text-white bg-slate-700 px-2.5 py-1 rounded">STANDBY</div>
                     </div>
                 </div>
@@ -609,7 +609,7 @@
                 <div class="bg-slate-900 rounded-lg p-3 border border-orange-500/30 shadow-inner mt-3 space-y-2.5">
                     <div class="text-xs font-bold text-orange-400 border-b border-slate-800 pb-1.5 flex items-center justify-between">
                         <span class="flex items-center gap-1.5">
-                            <i class="fa-solid fa-compass-drafting text-orange-400"></i> Route Planner
+                            <i class="fa-solid fa-compass-drafting text-orange-400"></i> Path Generator Source
                         </span>
                         <span id="badgePathEngine" class="text-xs bg-slate-800 text-slate-400 border border-slate-700 px-1.5 py-0.5 rounded font-mono font-bold">
                             Awaiting Ports
@@ -619,20 +619,20 @@
                     <!-- Current Active Generator Box -->
                     <div class="bg-slate-950 p-2.5 rounded border border-slate-800 space-y-1">
                         <div class="flex items-center justify-between text-xs font-mono">
-                            <span class="text-slate-400 font-bold uppercase">Planning with:</span>
+                            <span class="text-slate-400 font-bold uppercase">Active Path Finder:</span>
                             <span id="txtPathEngineName" class="text-amber-400 font-bold">Route optimiser + A* hybrid</span>
                         </div>
                         <div id="txtPathEngineDesc" class="text-sm text-slate-300 leading-snug">
-                            Select Departure and Destination ports to display generated route source.
+                            Select Departure (Port A) and Destination (Port B) on map to generate route.
                         </div>
                     </div>
 
                     <!-- Generator Mode Selector -->
                     <div class="space-y-1">
-                        <div class="text-xs text-slate-400 font-bold uppercase tracking-wider">Route Planner</div>
+                        <div class="text-xs text-slate-400 font-bold uppercase tracking-wider">Path Generator Mode</div>
                         <div class="grid grid-cols-1 gap-1 font-mono text-xs">
                             <button id="btnPathModeRRT" type="button" class="px-1.5 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 font-bold hover:bg-emerald-500/30 transition-all cursor-pointer text-center truncate" title="Use Sampling-Based Rapidly-Exploring Random Tree">
-                                Around obstacles <span class="text-slate-400 font-normal">(BAIRRT)</span>
+                                BAIRRT <span class="text-slate-400 font-normal">(Active)</span>
                             </button>
                         </div>
                     </div>
@@ -641,7 +641,7 @@
                     <div class="grid grid-cols-2 gap-1.5 text-xs font-mono pt-0.5">
                         <div class="bg-slate-950/80 p-1.5 rounded border border-slate-800">
                             <div class="text-xs text-slate-400 flex items-center gap-1">
-                                <i class="fa-solid fa-brain text-amber-400"></i> Decides
+                                <i class="fa-solid fa-brain text-amber-400"></i> AI Strategic
                             </div>
                             <div id="valEngineAiStatus" class="font-bold text-amber-300 truncate" title="services/route/planner.py — deterministic, no language model in the decision path">planner.py</div>
                         </div>
@@ -662,24 +662,24 @@
                     </div>
                     <div class="grid grid-cols-2 gap-2 text-xs">
                         <div>
-                            <div class="text-xs text-slate-400">Sideways drift</div>
+                            <div class="text-xs text-slate-400">Vector Leeway (Crab)</div>
                             <div id="outCrabAngle" class="font-bold text-orange-400 hud-font">--</div>
                         </div>
                         <div>
-                            <div class="text-xs text-slate-400">Shallow-water drag</div>
+                            <div class="text-xs text-slate-400">Shallow / Squat Effect</div>
                             <div id="outSquatDrag" class="font-bold text-sky-400 hud-font">--</div>
                         </div>
                         <div>
-                            <div class="text-xs text-slate-400">Peak gusts</div>
+                            <div class="text-xs text-slate-400">Peak Gusts (Realtime)</div>
                             <div id="outGustPeak" class="font-bold text-amber-300 hud-font">--</div>
                         </div>
                         <div>
-                            <div class="text-xs text-slate-400">Tide phase</div>
+                            <div class="text-xs text-slate-400">Tidal Phase (12.4h)</div>
                             <div id="outTidePhase" class="font-bold text-sky-300 hud-font text-sm truncate">--</div>
                         </div>
                         <div>
                             <div class="text-xs text-slate-400">SFOC & Engine Load</div>
-                            <div id="outSFOC" class="font-bold text-emerald-400 hud-font text-sm truncate">OFF (Standby)</div>
+                            <div id="outSFOC" class="font-bold text-emerald-400 hud-font text-sm truncate">OFF (Voyage Standby)</div>
                         </div>
                         <div>
                             <div class="text-xs text-slate-400">Windage Drag</div>
@@ -706,7 +706,7 @@
                         </div>
                         <div class="flex justify-between items-center text-xs">
                             <span class="text-slate-400">User Approval:</span>
-                            <span id="txtUserApproval" class="font-mono text-amber-300 font-bold">Automatic — no confirmation asked</span>
+                            <span id="txtUserApproval" class="font-mono text-amber-300 font-bold">Automatic (No Prompt)</span>
                         </div>
                         <div class="flex justify-between items-center text-xs">
                             <span class="text-slate-400">Primary Directives:</span>
@@ -742,7 +742,7 @@
                     <div class="text-xs font-bold text-sky-400 border-b border-slate-800 pb-1.5 flex items-center justify-between">
                         <span class="flex items-center gap-1.5">
                             <i class="fa-solid fa-clipboard-check text-sky-400"></i>
-                            <span id="txtAuditTitle">Pathfinder + route optimiser</span>
+                            <span id="txtAuditTitle">RRT Explorer AI Audit</span>
                         </span>
                         <span id="badgeAuditRating" class="text-xs bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded font-mono font-bold">--</span>
                     </div>
