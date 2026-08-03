@@ -158,17 +158,17 @@
             <!-- Hairline divider drawn on, left to right, after the logo settles. -->
             <div class="splash-rule mt-6 h-px w-[220px] max-w-[60vw] bg-gradient-to-r from-transparent via-orange-500/70 to-transparent" aria-hidden="true"></div>
 
-            <h1 class="splash-word mt-5 text-[2.6rem] leading-none font-semibold tracking-tight text-white">Marine-AI</h1>
+            <h1 class="splash-word mt-5 text-[2.6rem] leading-none font-semibold tracking-tight">Marine-AI</h1>
 
-            <p class="splash-sub mt-3 text-sm text-slate-400 max-w-sm leading-snug">
+            <p class="splash-sub mt-3 text-sm max-w-sm leading-snug">
                 Retrofit fuel, route and engine-health advice for Philippine passenger boats.
             </p>
 
             <div class="splash-foot mt-9 flex flex-col items-center gap-2.5">
-                <div class="h-[2px] w-40 rounded-full bg-slate-800/90 overflow-hidden" aria-hidden="true">
-                    <div class="splash-bar h-full w-1/3 rounded-full bg-orange-500"></div>
+                <div class="h-[2px] w-40 rounded-full bg-slate-800/70 overflow-hidden" aria-hidden="true">
+                    <div class="splash-bar h-full w-1/3 rounded-full"></div>
                 </div>
-                <p id="splashStatus" class="text-[11px] font-mono tracking-wide text-slate-500">Starting the optimiser…</p>
+                <p id="splashStatus" class="splash-status text-[11px] font-mono tracking-wide">Starting the optimiser…</p>
             </div>
         </div>
     </div>
@@ -179,8 +179,34 @@
         .splash {
             background:
                 radial-gradient(120% 90% at 50% 8%, #0d1a2e 0%, #050b16 46%, #020617 100%);
-            transition: opacity 620ms cubic-bezier(.4, 0, .2, 1);
+            /* 600ms, matching SPLASH_FADE_MS in main.js. If you change one,
+               change the other -- a mismatch removes the node mid-fade. */
+            transition: opacity 600ms cubic-bezier(.4, 0, .2, 1);
         }
+
+        /* Text is warmed toward the brand rather than sitting as stark white on
+           near-black. Pure #fff against #020617 is about 19:1 -- technically
+           excellent and visually harsh, and it made the wordmark read as a
+           separate element pasted over the logo instead of belonging with it.
+           Each line now carries a little of the orange, weakening down the
+           hierarchy, and the whole group reads as one temperature.
+           Everything here still clears WCAG AA comfortably; the dimmest, the
+           status line at #7c8698, is ~5.6:1 on this background. */
+        .splash-word {
+            background: linear-gradient(180deg, #fdf3e7 0%, #f6d9bd 62%, #f0bf95 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        /* Gradient text disappears entirely if background-clip is unsupported,
+           so a solid colour is painted first and only overridden where the
+           browser can honour the clip. */
+        @supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+            .splash-word { color: #fbead8; background: none; }
+        }
+        .splash-sub    { color: #9aa6b8; }
+        .splash-status { color: #7c8698; }
+        .splash-bar    { background: linear-gradient(90deg, #c2410c 0%, #f97316 50%, #fdba74 100%); }
         .splash-wash {
             position: absolute; inset: -20%;
             background:

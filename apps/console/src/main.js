@@ -5669,8 +5669,21 @@ function refreshAnalyticsSidebar() {
             //
             // The guide itself stays once-per-visitor. A nine-step tour on every load
             // would be hostile, and the splash is what the "every time" applies to.
-            const SPLASH_MIN_MS = 1600;
-            const SPLASH_FADE_MS = 500;
+            // Five seconds, end to end, measured from navigation start:
+            //
+            //   0.06s  brand starts rising
+            //   1.62s  last element (progress) has settled
+            //   1.6-4.4s  hold, fully composed
+            //   4.40s  fade begins
+            //   5.00s  removed from the DOM
+            //
+            // MUST stay in step with `.splash { transition: opacity }` in
+            // index.html. They were 500ms here and 620ms there, so the element was
+            // being removed 120ms into a fade that had not finished -- a visible
+            // pop rather than a dissolve, and exactly the kind of thing that only
+            // shows up when you watch it rather than read it.
+            const SPLASH_MIN_MS = 4400;
+            const SPLASH_FADE_MS = 600;
 
             function startGuideIfUnseen() {
                 if (localStorage.getItem('marine_ai_seen_guide_v3')) return;
