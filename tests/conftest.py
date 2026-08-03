@@ -17,6 +17,13 @@ here therefore handed it straight back the moment a test imported the app, and
 the suite's hermeticity silently came to rest on `MARINE_AI_ADVISORY_DISABLED`
 alone. Both defences are meant to hold independently.
 
+**Provider selection is cleared for the same reason.** The moment a developer
+put `MARINE_AI_ADVISORY_PROVIDER=claude` in their own `.env`, two Gemini tests
+began failing in the full suite while passing in isolation -- `provider()` reads
+that variable before it looks at any key, so an operator's local preference was
+deciding what the suite asserted. Which provider the tests exercise must be a
+property of the tests, not of the machine.
+
 **No disk.** The voyage store is the only part of this system that writes. Left to
 its default it would put a real `data/voyages.db` in the working tree, so the
 suite would leave a file behind, and worse, a test's voyages would still be there
@@ -35,4 +42,6 @@ import os
 os.environ.setdefault("MARINE_AI_VOYAGE_DB", ":memory:")
 os.environ["ANTHROPIC_API_KEY"] = ""  # empty, not absent -- see the docstring
 os.environ["GOOGLE_API_KEY"] = ""  # same reasoning; provider selection prefers it
+os.environ["MARINE_AI_ADVISORY_PROVIDER"] = ""  # an operator's .env must not pick
+os.environ["ANTHROPIC_MODEL"] = ""  # nor decide which model a test asserts against
 os.environ["MARINE_AI_ADVISORY_DISABLED"] = "1"
