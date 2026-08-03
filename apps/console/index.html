@@ -470,12 +470,16 @@
                     </div>
                 </div>
                 
+                <!-- Voyage HUD. Every value here is drawn over the live map, whose
+                     brightness runs from near-black to pale blue, so each readout
+                     carries its own drop-shadow halo rather than relying on the
+                     background staying dark. -->
                 <div class="absolute top-4 left-4 z-10 flex flex-col pointer-events-none gap-4">
                     <div>
-                        <div class="text-xs text-white/90 drop-shadow-md mb-0.5 font-bold uppercase tracking-wider">Rec. Speed</div>
+                        <div class="text-xs text-white/90 drop-shadow-md mb-0.5 font-bold uppercase tracking-wider">Rec. Throttle</div>
                         <div class="flex items-baseline gap-1 drop-shadow-lg">
-                            <span id="outThrottle" class="text-4xl font-bold text-orange-400 hud-font drop-shadow-lg shadow-black">0.0</span>
-                            <span class="text-orange-500 font-bold drop-shadow-lg shadow-black">kts</span>
+                            <span id="outHudRecThrottle" class="text-4xl font-bold text-orange-400 hud-font drop-shadow-lg shadow-black">—</span>
+                            <span class="text-orange-500 font-bold drop-shadow-lg shadow-black">%</span>
                         </div>
                     </div>
                     <div>
@@ -486,6 +490,23 @@
                         </div>
                         <div class="text-xs text-white/80 drop-shadow mt-0.5 shadow-black" id="speedStatus">Awaiting Start</div>
                     </div>
+                    <div>
+                        <div class="text-xs text-white/90 drop-shadow-md mb-0.5 font-bold uppercase tracking-wider">ETA Target</div>
+                        <div class="flex items-baseline gap-1 drop-shadow-lg">
+                            <span id="outHudEtaTarget" class="text-2xl font-bold text-sky-300 hud-font drop-shadow-lg shadow-black">--</span>
+                            <span class="text-sky-400/90 font-bold text-xs drop-shadow-lg shadow-black">mins</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-white/90 drop-shadow-md mb-0.5 font-bold uppercase tracking-wider">Time Remaining</div>
+                        <div class="flex items-baseline gap-1 drop-shadow-lg">
+                            <span id="outHudTimeRemaining" class="text-2xl font-bold text-amber-300 hud-font drop-shadow-lg shadow-black">--:--</span>
+                        </div>
+                    </div>
+                    <!-- Recommended speed in knots still drives the sidebar readout;
+                         kept here (hidden) so the existing writer at main.js keeps a
+                         target and no call site has to special-case a missing node. -->
+                    <span id="outThrottle" class="hidden">0.0</span>
                 </div>
 
                 <!-- 3D Map View (Main Canvas Background) -->

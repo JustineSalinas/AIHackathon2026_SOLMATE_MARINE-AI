@@ -2331,9 +2331,30 @@ import "driver.js/dist/driver.css";
             el.dispatchEvent(new Event('input'));
         }
 
+        // Readouts the voyage HUD shows alongside their sidebar original. Mirroring
+        // here rather than at each call site means the HUD cannot drift out of step
+        // with the panel: the countdown is written from three different places and
+        // a fourth would otherwise have to remember to update both.
+        const HUD_MIRRORS = { outEtaSecs: 'outHudTimeRemaining' };
+
         function updateDisplayValue(id, value) {
             const el = document.getElementById(id);
             if (el) el.innerText = value;
+            const mirrorId = HUD_MIRRORS[id];
+            if (mirrorId) {
+                const mirror = document.getElementById(mirrorId);
+                if (mirror) mirror.innerText = value;
+            }
+        }
+
+        // The optimiser's recommended throttle, as a percentage of rated RPM. The
+        // conversion happens once, server-side in app.ts (`throttlePctFromRpm`);
+        // this only displays it. Null means no recommendation was returned, and a
+        // dash is the honest reading -- never a carried-over or default number.
+        function renderRecThrottleHud() {
+            const pct = State.ai.recThrottle;
+            const ok = pct != null && Number.isFinite(pct);
+            updateDisplayValue('outHudRecThrottle', ok ? pct.toFixed(0) : '—');
         }
 
         function log(msg, type = 'info') {
@@ -4409,6 +4430,11 @@ function refreshAnalyticsSidebar() {
             }
 
             State.userTargetEtaMins = userTargetMins;
+            // The HUD reads the target from the same resolved value the schedule
+            // maths just used, not from the input box, so an out-of-range or
+            // mid-edit entry cannot show one target on the map and another in the
+            // panel.
+            updateDisplayValue('outHudEtaTarget', userTargetMins.toFixed(0));
             if (!State.isRunning) {
                 State.targetEtaSeconds = userTargetMins * 60;
                 const m = Math.floor(userTargetMins);
@@ -4441,6 +4467,7 @@ function refreshAnalyticsSidebar() {
                          NavEngine.isFetching = false;
                          State.ai.recThrottle = result.ok ? result.recThrottle : null;
                          State.ai.savings = result.ok ? result.savingsLph : null;
+                         renderRecThrottleHud();
                          renderAdvisory(result);
 
                          // Sea-state abort is a deterministic client-side rule
@@ -4473,6 +4500,7 @@ function refreshAnalyticsSidebar() {
                  // same readout as a model output. A dash is the truth.
                  State.ai.recThrottle = null;
                  State.ai.savings = null;
+                 renderRecThrottleHud();
                  renderAdvisory(null);
 
                  const routeStatusEl = document.getElementById('outRouteStatus');
