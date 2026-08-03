@@ -141,52 +141,98 @@
          once-per-visitor because a nine-step tour on every load is hostile.
          Same banca mark as the header: one boat, drawn once, used everywhere. -->
     <div id="splashScreen" role="status" aria-live="polite" aria-label="Marine-AI is starting"
-         class="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-950 transition-opacity duration-500">
-        <div class="flex flex-col items-center gap-5 px-6 text-center">
-            <svg viewBox="-12 -13 24 24" fill="none" aria-hidden="true" focusable="false"
-                 class="w-20 h-20 text-orange-500 splash-mark">
-                <g opacity="0.85">
-                    <path d="M-9.5 -3.6H-3.6M3.6 -3.6H9.5M-9.5 3.8H-3.6M3.6 3.8H9.5"
-                          stroke="currentColor" stroke-width="1" stroke-linecap="round" />
-                </g>
-                <rect x="-10.4" y="-8.6" width="1.8" height="17.2" rx="0.9" fill="currentColor" />
-                <rect x="8.6" y="-8.6" width="1.8" height="17.2" rx="0.9" fill="currentColor" />
-                <path d="M0 -12.2 C-2.6 -8 -4.5 -3.4 -4.5 2.2 L-4.1 8.7 Q-4.05 9.9 -2.9 10 L2.9 10 Q4.05 9.9 4.1 8.7 L4.5 2.2 C4.5 -3.4 2.6 -8 0 -12.2 Z"
-                      fill="currentColor" />
-            </svg>
+         class="splash fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden">
 
-            <div>
-                <p class="text-[11px] font-bold tracking-[0.34em] text-slate-500 uppercase">Team SOLMATE</p>
-                <h1 class="mt-1.5 text-4xl font-bold tracking-tight text-white">Marine-AI</h1>
-                <p class="mt-2 text-sm text-slate-400 max-w-xs mx-auto leading-snug">
-                    Retrofit fuel, route and engine-health advice for Philippine passenger boats.
-                </p>
-            </div>
+        <!-- A slow horizon wash behind everything. Two very low-contrast radial
+             pools, drifting: enough to stop a flat black rectangle reading as a
+             page that failed to load, not enough to compete with the wordmark. -->
+        <div class="splash-wash" aria-hidden="true"></div>
 
-            <div class="w-52 h-[3px] rounded-full bg-slate-800 overflow-hidden" aria-hidden="true">
-                <div class="splash-bar h-full w-1/3 rounded-full bg-orange-500"></div>
+        <div class="relative flex flex-col items-center px-6 text-center">
+            <!-- The brand asset leads. One mark, not two: the banca is the app's
+                 icon and lives in the header, so repeating it here would put two
+                 competing logos in the same eyeline. -->
+            <img src="/brand/solmate.png" alt="SOLMATE Technology"
+                 class="splash-logo w-[280px] max-w-[72vw] select-none" draggable="false">
+
+            <!-- Hairline divider drawn on, left to right, after the logo settles. -->
+            <div class="splash-rule mt-6 h-px w-[220px] max-w-[60vw] bg-gradient-to-r from-transparent via-orange-500/70 to-transparent" aria-hidden="true"></div>
+
+            <h1 class="splash-word mt-5 text-[2.6rem] leading-none font-semibold tracking-tight text-white">Marine-AI</h1>
+
+            <p class="splash-sub mt-3 text-sm text-slate-400 max-w-sm leading-snug">
+                Retrofit fuel, route and engine-health advice for Philippine passenger boats.
+            </p>
+
+            <div class="splash-foot mt-9 flex flex-col items-center gap-2.5">
+                <div class="h-[2px] w-40 rounded-full bg-slate-800/90 overflow-hidden" aria-hidden="true">
+                    <div class="splash-bar h-full w-1/3 rounded-full bg-orange-500"></div>
+                </div>
+                <p id="splashStatus" class="text-[11px] font-mono tracking-wide text-slate-500">Starting the optimiser…</p>
             </div>
-            <p id="splashStatus" class="text-xs font-mono text-slate-500">Starting the optimiser…</p>
         </div>
     </div>
 
     <style>
-        /* Inline so the splash animates on the very first frame, before the
-           hashed CSS bundle has been fetched. */
+        /* Inline: the splash must paint and animate on the first frame, before
+           the hashed CSS bundle has been fetched. */
+        .splash {
+            background:
+                radial-gradient(120% 90% at 50% 8%, #0d1a2e 0%, #050b16 46%, #020617 100%);
+            transition: opacity 620ms cubic-bezier(.4, 0, .2, 1);
+        }
+        .splash-wash {
+            position: absolute; inset: -20%;
+            background:
+                radial-gradient(38% 26% at 22% 30%, rgba(249,115,22,.10), transparent 70%),
+                radial-gradient(34% 24% at 78% 68%, rgba(56,189,248,.07), transparent 70%);
+            animation: splash-drift 14s ease-in-out infinite alternate;
+        }
+        @keyframes splash-drift {
+            from { transform: translate3d(-2.5%, -1.5%, 0) scale(1); }
+            to   { transform: translate3d( 2.5%,  1.5%, 0) scale(1.06); }
+        }
+
+        /* One staggered entrance. Everything rises a little and fades in, in the
+           order a reader takes it: brand, rule, product, line, progress. Opacity
+           and transform only -- both compositor-driven, so the sequence stays
+           smooth while the app is still parsing behind the curtain. */
+        @keyframes splash-rise {
+            from { opacity: 0; transform: translate3d(0, 14px, 0); }
+            to   { opacity: 1; transform: none; }
+        }
+        @keyframes splash-draw {
+            from { opacity: 0; transform: scaleX(.3); }
+            to   { opacity: 1; transform: none; }
+        }
+        .splash-logo, .splash-word, .splash-sub, .splash-foot {
+            opacity: 0;
+            animation: splash-rise 900ms cubic-bezier(.16, 1, .3, 1) forwards;
+        }
+        .splash-logo { animation-delay: 60ms; }
+        .splash-rule {
+            opacity: 0; transform-origin: 50% 50%;
+            animation: splash-draw 760ms cubic-bezier(.16, 1, .3, 1) 340ms forwards;
+        }
+        .splash-word { animation-delay: 420ms; }
+        .splash-sub  { animation-delay: 560ms; }
+        .splash-foot { animation-delay: 720ms; }
+
         @keyframes splash-sweep {
             0%   { transform: translateX(-120%); }
             100% { transform: translateX(320%); }
         }
-        .splash-bar { animation: splash-sweep 1.15s ease-in-out infinite; }
-        @keyframes splash-rock {
-            0%, 100% { transform: rotate(-5deg); }
-            50%      { transform: rotate(5deg); }
-        }
-        .splash-mark { animation: splash-rock 2.4s ease-in-out infinite; transform-origin: 50% 70%; }
-        /* A boat rocking and a bar sweeping are decoration, not information. */
+        .splash-bar { animation: splash-sweep 1.25s cubic-bezier(.45, 0, .55, 1) infinite; }
+
+        /* All of the above is decoration. Under reduced-motion everything is
+           simply present, at rest. */
         @media (prefers-reduced-motion: reduce) {
-            .splash-bar, .splash-mark { animation: none; }
+            .splash-wash, .splash-bar { animation: none; }
+            .splash-logo, .splash-word, .splash-sub, .splash-foot, .splash-rule {
+                animation: none; opacity: 1; transform: none;
+            }
             .splash-bar { width: 100%; }
+            .splash { transition: none; }
         }
     </style>
 
@@ -203,18 +249,24 @@
                      outriggers. A mark that lives at 20-32px can hold one
                      dominant form; the hull is it, and the katig read as the
                      two parallel strokes either side of it. -->
-                <svg class="brand__mark" viewBox="-12 -13 24 24" fill="none" aria-hidden="true" focusable="false">
-                    <g opacity="0.85">
-                        <path d="M-9.5 -3.6H-3.6M3.6 -3.6H9.5M-9.5 3.8H-3.6M3.6 3.8H9.5"
-                              stroke="currentColor" stroke-width="1" stroke-linecap="round" />
-                    </g>
-                    <rect x="-10.4" y="-8.6" width="1.8" height="17.2" rx="0.9" fill="currentColor" />
-                    <rect x="8.6" y="-8.6" width="1.8" height="17.2" rx="0.9" fill="currentColor" />
+                <!-- Redrawn 2026-08-03. The hull was 9 units across a 22-unit
+                     length -- about 1:2.4 -- while the floats and booms carried
+                     the same visual weight, so at every size it read as a
+                     lightbulb inside a cage. Rendered at 130px against three
+                     alternatives, the fix turned out to be proportion rather than
+                     detail: a banca hull is nearer 1:6, and the katig has to be
+                     subordinate to it. Hull is now 4.1 across a 21.5 length, the
+                     floats are thinner and dimmed, and the booms are hairlines. -->
+                <svg class="brand__mark" viewBox="-12 -12 24 24" fill="none" aria-hidden="true" focusable="false">
+                    <path d="M-8.2 -3.4H8.2M-8.2 5H8.2"
+                          stroke="currentColor" stroke-width="0.7" stroke-linecap="round" opacity="0.6" />
+                    <rect x="-8.8" y="-7.4" width="1.15" height="15.8" rx="0.575" fill="currentColor" opacity="0.75" />
+                    <rect x="7.65" y="-7.4" width="1.15" height="15.8" rx="0.575" fill="currentColor" opacity="0.75" />
                     <!-- Pointed stem, and a FLAT transom. Curving the stern to
                          match the bow made a symmetrical almond, which reads as
                          a leaf between two poles; the squared-off stern is what
                          makes it a hull with a direction. -->
-                    <path d="M0 -12.2 C-2.6 -8 -4.5 -3.4 -4.5 2.2 L-4.1 8.7 Q-4.05 9.9 -2.9 10 L2.9 10 Q4.05 9.9 4.1 8.7 L4.5 2.2 C4.5 -3.4 2.6 -8 0 -12.2 Z"
+                    <path d="M0 -11.2 C-1.0 -8.4 -1.95 -4.6 -2.05 -0.6 L-1.95 8.3 Q-1.9 10.2 -0.75 10.3 L0.75 10.3 Q1.9 10.2 1.95 8.3 L2.05 -0.6 C1.95 -4.6 1.0 -8.4 0 -11.2 Z"
                           fill="currentColor" />
                 </svg>
                 <h1 class="brand__word">Marine-AI</h1>
