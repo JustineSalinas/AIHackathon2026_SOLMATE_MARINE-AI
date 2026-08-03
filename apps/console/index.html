@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -6,7 +6,7 @@
     <!-- Matches apps/bridge/app/layout.tsx. The previous title was 76 characters
          of keyword salad ("Global High-Precision Land Avoidance Pathfinder"),
          which is what a browser tab, a bookmark and a screencast all show. -->
-    <title>Marine-AI — Navigation Console</title>
+    <title>Marine-AI â€” Navigation Console</title>
     <meta name="description" content="Route and throttle planning for Philippine passenger boats. Advisory only; the captain retains command.">
     <!-- Same mark, booms dropped: at 16px the cross-booms close up into a blur
          and the hull-plus-two-floats silhouette is what still reads. -->
@@ -222,8 +222,17 @@
                                          the padding comes to 2.5 units against a
                                          round cap that needs 5 -- the top and
                                          bottom dots were being shaved flat. -->
+                                    <!-- The region must cover the whole path, and
+                                         the path now runs to x=383 -- past the
+                                         380-wide viewBox, because the hull's
+                                         centre genuinely sits beyond the route
+                                         box's right edge. At width="380" the
+                                         final dot fell OUTSIDE the mask and was
+                                         erased down to a 3px sliver. A mask
+                                         region clips as hard as overflow does,
+                                         and it is easy to forget it is there. -->
                                     <mask id="mai-route-mask" maskUnits="userSpaceOnUse"
-                                          x="0" y="-10" width="380" height="72">
+                                          x="0" y="-10" width="420" height="72">
                                         <!-- The mask's path is deliberately LONGER
                                              than the visible one: a short tangent
                                              lead-in before the first dot and
@@ -251,7 +260,7 @@
                                              reveal is empty at rest and covers
                                              every dot whole when complete. -->
                                         <path class="splash-route-reveal"
-                                              d="M0 28L14 31C120 58 290 56 338 26L350 19"
+                                              d="M0 28L14 31C120 58 335 48 383 25L396 19"
                                               stroke="#fff" stroke-width="24" fill="none"
                                               stroke-linecap="butt" pathLength="100"/>
                                     </mask>
@@ -266,14 +275,33 @@
                                        notch         -> (383.0,  8.8)
                                        right wing    -> (410.7, 34.5)
 
-                                     The curve ENDS at (338,26), below and left of
-                                     the LEFT WING TIP -- which the raised notch
-                                     makes the hull's lowest, leftmost ink, and so
-                                     the only vertex a track can credibly arrive
-                                     at. It rises at 32 degrees to get there;
-                                     flatter approaches ran past underneath the
-                                     hull and read as passing by rather than
-                                     meeting it.
+                                     The curve ENDS at (383,25) -- x=383 IS the
+                                     notch, so the track terminates directly
+                                     beneath the centre of the hull's base rather
+                                     than off its left wing.
+
+                                     Verified by walking the curve against the
+                                     hull's lower boundary (left edge wing->notch,
+                                     right edge notch->wing) at 600 samples: the
+                                     tightest pass occurs AT the endpoint, which is
+                                     what proves the approach slides under the left
+                                     wing rather than clipping it. Checking the
+                                     endpoint alone would not have caught a
+                                     mid-curve collision.
+
+                                     y=25 rather than the 20 that geometry alone
+                                     called for. The hull carries a 10px
+                                     drop-shadow, and clearance measured to its
+                                     GEOMETRIC edge left the final dot rendering as
+                                     a 3px sliver against the bloom. The visible
+                                     silhouette of a glowing object is bigger than
+                                     its path, so the gap has to be sized to the
+                                     glow.
+
+                                     Note x=383 sits outside the 380-wide viewBox.
+                                     That is deliberate and needs .splash-route to
+                                     keep overflow:visible -- the hull's centre is
+                                     genuinely past the route box's right edge.
 
                                      It STARTS at (14,31), the ring's own centre,
                                      so the route leaves the origin rather than
@@ -284,17 +312,17 @@
                                      marker, which is how a chart draws one.
 
                                      pathLength normalises the curve to 100 so the
-                                     period can be chosen to DIVIDE it: 100/17
+                                     period can be chosen to DIVIDE it: 100/18
                                      places a dot at 0 AND at 100, putting one on
                                      the origin and one at the arrival point, at
-                                     ~30px spacing. The route box's scale is
+                                     30.5px spacing. The route box's scale is
                                      uniform (x 0.013684 vs y 0.013692 em/unit),
                                      so the dash advances at a constant rate along
                                      the whole trajectory. -->
-                                <path d="M14 31C120 58 290 56 338 26"
+                                <path d="M14 31C120 58 335 48 383 25"
                                       stroke="#f2731c" stroke-width="10" fill="none"
                                       stroke-linecap="round"
-                                      pathLength="100" stroke-dasharray="0.1 6.15"
+                                      pathLength="100" stroke-dasharray="0.1 5.455556"
                                       mask="url(#mai-route-mask)"/>
                                 <!-- On the path, not floating above it. The ring
                                      is the departure point, so the first dot has
@@ -351,7 +379,7 @@
                 <div class="splash-track" aria-hidden="true">
                     <div class="splash-bar"></div>
                 </div>
-                <p id="splashStatus" class="splash-status">Starting the optimiser…</p>
+                <p id="splashStatus" class="splash-status">Starting the optimiserâ€¦</p>
             </div>
         </div>
     </div>
@@ -772,7 +800,7 @@
     <header class="bg-slate-900/95 backdrop-blur-md border-b border-orange-500/30 px-3 md:px-5 py-2 flex flex-col md:flex-row justify-between items-center shadow-lg z-[3000] relative gap-2 md:gap-4 w-full">
         <div class="flex items-center justify-between w-full md:w-auto shrink-0">
             <!-- Double-outrigger banca, plan view, bow up. Geometry taken from
-                 drawVessel() in apps/bridge/lib/render-chart.ts and rotated 90°,
+                 drawVessel() in apps/bridge/lib/render-chart.ts and rotated 90Â°,
                  so the logo and the boat on the chart are the same boat. -->
             <div class="brand shrink-0">
                 <!-- Three shapes and two hairlines, in that order of weight. The
@@ -909,7 +937,7 @@
                                      open on "CACHE: READY" in nominal green, which asserted
                                      a warm cache before a single request had been made. -->
                                 <span id="outApiCacheBadge" class="bg-slate-700/60 text-slate-300 px-1.5 py-0.5 rounded font-mono font-semibold" title="No metocean request has resolved yet this session.">AWAITING SYNC</span>
-                                <span id="outApiTile" class="text-slate-400 font-mono text-xs">Grid 10.69°N, 122.56°E</span>
+                                <span id="outApiTile" class="text-slate-400 font-mono text-xs">Grid 10.69Â°N, 122.56Â°E</span>
                             </div>
                             <div id="overrideStatusText" class="text-xs text-sky-300 flex items-center justify-between pt-1 border-t border-slate-800">
                                 <span class="truncate mr-1"><i class="fa-solid fa-sync fa-spin mr-1"></i> <span id="outApiLastSync" class="text-white font-semibold">Not yet synced</span></span>
@@ -931,7 +959,7 @@
                             </select>
                             <div id="liveWeatherStatus" class="hidden mt-1 text-xs text-sky-300 flex items-start gap-1.5">
                                 <i class="fa-solid fa-satellite-dish shrink-0 mt-0.5"></i>
-                                <span id="liveWeatherText" class="min-w-0">Fetching…</span>
+                                <span id="liveWeatherText" class="min-w-0">Fetchingâ€¦</span>
                             </div>
                         </div>
 
@@ -943,7 +971,7 @@
                         </div>
                         <div>
                             <div class="flex justify-between text-xs mb-1">
-                                <span>Wind Direction</span><span id="valWindDir" class="hud-font text-orange-400">212°</span>
+                                <span>Wind Direction</span><span id="valWindDir" class="hud-font text-orange-400">212Â°</span>
                             </div>
                             <input type="range" id="inWindDir" min="0" max="359" value="212">
                         </div>
@@ -955,7 +983,7 @@
                         </div>
                         <div>
                             <div class="flex justify-between text-xs mb-1">
-                                <span>Current Direction</span><span id="valCurrentDir" class="hud-font text-orange-400">252°</span>
+                                <span>Current Direction</span><span id="valCurrentDir" class="hud-font text-orange-400">252Â°</span>
                             </div>
                             <input type="range" id="inCurrentDir" min="0" max="359" value="252">
                         </div>
@@ -973,7 +1001,7 @@
                         </div>
                         <div>
                             <div class="flex justify-between text-xs mb-1">
-                                <span>Wave Direction (Swell)</span><span id="valWaveDir" class="hud-font text-orange-400">219°</span>
+                                <span>Wave Direction (Swell)</span><span id="valWaveDir" class="hud-font text-orange-400">219Â°</span>
                             </div>
                             <input type="range" id="inWaveDir" min="0" max="359" value="219">
                         </div>
@@ -998,7 +1026,7 @@
                          invalidating the demo. -->
                     <p class="text-xs text-slate-500 leading-snug mb-3 border border-slate-800 rounded p-2 bg-slate-900/60">
                         <i class="fa-solid fa-lock text-slate-500 mr-1"></i>
-                        Fixed demo vessel — a <strong class="text-slate-300">17.5 m passenger motor boat</strong>.
+                        Fixed demo vessel â€” a <strong class="text-slate-300">17.5 m passenger motor boat</strong>.
                         The spec is locked so every reading below is comparable to the figures we publish.
                     </p>
 
@@ -1144,14 +1172,14 @@
                     <div>
                         <div class="text-xs text-white/90 drop-shadow-md mb-0.5 font-bold uppercase tracking-wider">Rec. Throttle</div>
                         <div class="flex items-baseline gap-1 drop-shadow-lg">
-                            <span id="outHudRecThrottle" class="text-4xl font-bold text-orange-400 hud-font drop-shadow-lg shadow-black">—</span>
+                            <span id="outHudRecThrottle" class="text-4xl font-bold text-orange-400 hud-font drop-shadow-lg shadow-black">â€”</span>
                             <span class="text-orange-500 font-bold drop-shadow-lg shadow-black">%</span>
                         </div>
                     </div>
                     <div>
                         <div class="text-xs text-white/90 drop-shadow-md mb-0.5 font-bold uppercase tracking-wider">Saving at Rec.</div>
                         <div class="flex items-baseline gap-1 drop-shadow-lg">
-                            <span id="outHudRecSaving" class="text-2xl font-bold text-emerald-400 hud-font drop-shadow-lg shadow-black">—</span>
+                            <span id="outHudRecSaving" class="text-2xl font-bold text-emerald-400 hud-font drop-shadow-lg shadow-black">â€”</span>
                             <span class="text-emerald-500/90 font-bold text-xs drop-shadow-lg shadow-black">L/h</span>
                         </div>
                     </div>
@@ -1337,7 +1365,7 @@
                             <div class="text-xs text-slate-400 flex items-center gap-1">
                                 <i class="fa-solid fa-brain text-amber-400"></i> AI Strategic
                             </div>
-                            <div id="valEngineAiStatus" class="font-bold text-amber-300 truncate" title="services/route/planner.py — deterministic, no language model in the decision path">planner.py</div>
+                            <div id="valEngineAiStatus" class="font-bold text-amber-300 truncate" title="services/route/planner.py â€” deterministic, no language model in the decision path">planner.py</div>
                         </div>
                         <div class="bg-slate-950/80 p-1.5 rounded border border-slate-800">
                             <div class="text-xs text-slate-400 flex items-center gap-1">
@@ -1469,14 +1497,14 @@
                         <span id="outAdviceSource" class="text-xs bg-slate-500/20 text-slate-400 px-1.5 py-0.5 rounded font-mono">no advice</span>
                     </div>
                     <div class="flex items-baseline justify-between gap-2">
-                        <div id="outAdviceRpm" class="text-4xl font-bold text-white hud-font leading-none tracking-tight">—</div>
-                        <div id="outAdviceSavings" class="text-lg font-bold text-emerald-300 hud-font" title="Change in fuel burn against the current setting">—</div>
+                        <div id="outAdviceRpm" class="text-4xl font-bold text-white hud-font leading-none tracking-tight">â€”</div>
+                        <div id="outAdviceSavings" class="text-lg font-bold text-emerald-300 hud-font" title="Change in fuel burn against the current setting">â€”</div>
                     </div>
                     <div id="outAdviceText" class="text-sm text-slate-300 leading-snug">
                         Awaiting forecast.
                     </div>
                     <div class="text-xs text-amber-400/80 font-mono uppercase tracking-wider border-t border-slate-800 pt-1.5">
-                        Advisory only — captain commands
+                        Advisory only â€” captain commands
                     </div>
                 </div>
 
@@ -1563,7 +1591,7 @@
             <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 text-sm text-slate-300">
                 <ol class="space-y-4 list-decimal list-outside ml-4 marker:text-orange-500 marker:font-bold">
                     <li><span class="font-bold text-white">Set the two ports.</span> Click the map to drop the departure pin, then the destination pin. The pathfinder replans on every change.</li>
-                    <li><span class="font-bold text-white">Describe the vessel.</span> Open the vessel panel and enter length, beam, draft, capacity and engine rating. Every fuel and speed figure is derived from these — defaults are a generic 120&nbsp;t ferry.</li>
+                    <li><span class="font-bold text-white">Describe the vessel.</span> Open the vessel panel and enter length, beam, draft, capacity and engine rating. Every fuel and speed figure is derived from these â€” defaults are a generic 120&nbsp;t ferry.</li>
                     <li><span class="font-bold text-white">Choose the conditions.</span> Pick a weather preset, or <span class="text-sky-300 font-semibold">Live conditions at vessel position</span> to pull the real sea state at the boat's coordinates.</li>
                     <li><span class="font-bold text-white">Add hazards.</span> The obstacle and storm tools place avoidance zones. Click an armed tool again to put it away.</li>
                     <li><span class="font-bold text-white">Get under way.</span> Enter the passenger count and target crossing time, and the console solves for the throttle that meets it.</li>
@@ -1573,7 +1601,7 @@
                     <div class="font-bold text-white flex items-center gap-2">
                         <i class="fa-solid fa-circle-info text-orange-500"></i> Reading the numbers
                     </div>
-                    <p>Every recommendation comes from the optimiser, not from a language model. Where a value is unavailable the console shows a dash rather than a guess — a dash means the optimiser was not reached, and it is a real state worth reporting.</p>
+                    <p>Every recommendation comes from the optimiser, not from a language model. Where a value is unavailable the console shows a dash rather than a guess â€” a dash means the optimiser was not reached, and it is a real state worth reporting.</p>
                     <p>If the requested crossing time is faster than the hull can achieve in the current sea, the console says so and reports the time it <em class="text-white not-italic font-semibold">can</em> make instead.</p>
                 </div>
             </div>
