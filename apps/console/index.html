@@ -164,6 +164,7 @@
              pools, drifting: enough to stop a flat black rectangle reading as a
              page that failed to load, not enough to compete with the wordmark. -->
         <div class="splash-wash" aria-hidden="true"></div>
+        <div class="splash-vignette" aria-hidden="true"></div>
 
         <div class="splash-col">
             <!-- The lockup, per the supplied concept: SOLMATE above, MARINE
@@ -187,7 +188,13 @@
                          from assistive tech entirely. -->
                     <span class="splash-sr">SOLMATE Marine-AI</span>
                     <span class="splash-wordline" aria-hidden="true">
-                        <span class="splash-marine">Marine</span>
+                        <!-- Split per letter so the word can build left to
+                             right into the dart's arrival. Hardcoded rather than
+                             split at runtime: the string is fixed, and doing it
+                             in JS would mean the splash could not render its own
+                             wordmark until a bundle had loaded -- the exact
+                             dependency this screen is built to avoid. -->
+                        <span class="splash-marine"><span>M</span><span>A</span><span>R</span><span>I</span><span>N</span><span>E</span></span>
 
                         <span class="splash-mark">
                             <!-- The route is anchored to the POINTER, not to the
@@ -383,9 +390,16 @@
         .splash-marine, .splash-i {
             position: relative; z-index: 2;
             color: #4a86ef;
+            /* Colour grading, not a glow effect. Flat #4a86ef on flat #000 is
+               two dead surfaces meeting; a wide, very low-alpha halo of the
+               letter's own hue gives the type something to sit in and reads as
+               depth rather than as a light source. Static, so it costs one
+               paint. */
+            text-shadow: 0 0 38px rgba(74, 134, 239, .34), 0 0 12px rgba(74, 134, 239, .18);
         }
+        .splash-marine > span { display: inline-block; }
         @media (forced-colors: active) {
-            .splash-marine, .splash-i { color: CanvasText; }
+            .splash-marine, .splash-i { color: CanvasText; text-shadow: none; }
         }
 
         .splash-mark {
@@ -451,16 +465,35 @@
             height: 100%; width: 33.333%; border-radius: 9999px;
             background: linear-gradient(90deg, #c2410c 0%, #f97316 50%, #fdba74 100%);
         }
-        /* Kept, at half strength. On the old navy field this was scene-setting;
-           on black its only job is to stop a flat black rectangle reading as a
-           page that failed to paint. Any stronger and it stops being black. */
+        /* Colour grading. Pure black behind a two-colour mark was reading flat --
+           not restrained, just empty. Three graded pools fix it without the
+           field ceasing to be black: a warm one under the SOLMATE side, a cool
+           one opposite so the blue has something of its own temperature to sit
+           against, and a wide dim key behind the lockup itself so the mark is
+           lit rather than pasted on. Highest alpha here is .13; measured at the
+           brightest point the background is still #14100c, which is black by any
+           reading. */
         .splash-wash {
             position: absolute; inset: -20%;
             background:
-                radial-gradient(38% 26% at 24% 32%, rgba(249,115,22,.07), transparent 70%),
-                radial-gradient(34% 24% at 76% 68%, rgba(56,189,248,.04), transparent 70%);
+                radial-gradient(46% 34% at 30% 38%, rgba(249,115,22,.13), transparent 68%),
+                radial-gradient(40% 30% at 74% 64%, rgba(56,132,239,.09), transparent 70%),
+                radial-gradient(70% 52% at 50% 48%, rgba(120,90,60,.07), transparent 72%);
             animation: splash-drift 14s ease-in-out infinite alternate;
         }
+        /* Vignette, over the wash and under the mark. Pulls the corners down so
+           the centre reads as the brightest thing on screen even though the
+           pools are off-centre. */
+        .splash-vignette {
+            position: absolute; inset: 0; pointer-events: none;
+            background: radial-gradient(farthest-side at 50% 45%, transparent 42%, rgba(0,0,0,.55) 100%);
+        }
+        /* The warm family gets a bloom so it holds its own against the blue's
+           halo above. drop-shadow follows the alpha channel, so it traces the
+           dots and the dart's silhouette instead of boxing them. */
+        .splash-route { filter: drop-shadow(0 0 7px rgba(249, 115, 22, .5)); }
+        .splash-pointer { filter: drop-shadow(0 0 10px rgba(249, 115, 22, .42)); }
+        .splash-logo { filter: drop-shadow(0 0 22px rgba(249, 115, 22, .22)); }
         @keyframes splash-drift {
             from { transform: translate3d(-2.5%, -1.5%, 0) scale(1); }
             to   { transform: translate3d( 2.5%,  1.5%, 0) scale(1.06); }
@@ -470,47 +503,80 @@
            the wordmark is there, a departure point is set, a course is plotted,
            and a heading arrives to complete the word.
 
-              80ms  lockup rises   (SOLMATE + MARINE, a COMPLETE word)
-             620ms  ring pops      (the departure point)
-             780ms  route draws    -- completes 1680ms
-            1700ms  dart lands     -- the heading arrives
-            1840ms  the I joins it -- and only now does it read "AI"
-            1900ms  strapline
-            2050ms  progress
+              80ms  SOLMATE rises
+             260ms  M A R I N E build, one every 52ms
+             900ms  ring pops      (the departure point)
+            1060ms  route draws    -- completes 1940ms
+            1880ms  dart lands     -- the heading arrives
+            2020ms  the I joins it -- and only now does it read "AI"
+            2250ms  strapline
+            2400ms  progress
 
-           Settled ~2.9s against a 4.2s hold: ~1.3s of calm, which is the band
-           where a pause reads as "finished" rather than "stuck". Animation
-           running right up to the dismissal reads as an app that was
-           interrupted rather than one that finished -- which is also why the
-           progress sweep is capped rather than infinite.
+           Settled ~3.1s against a 4.2s hold: ~1.1s of calm, which is the band
+           where a pause reads as "finished" rather than "stuck".
 
-           The route now COMPLETES at 1680ms and the dart launches at 1700ms.
-           Previously the dart launched at 2120 while the route ran to 2330: the
-           heading set off before the course it flew in on had finished drawing.
+           The route COMPLETES at 1940ms and the dart launches at 1880: they
+           overlap by a beat on purpose, so the dart is already moving as the
+           last dots land. It used to launch a full 200ms BEFORE the route
+           finished, which read as setting off down a road still being built.
 
-           The lockup still rises as ONE element. Animating SOLMATE and MARINE
-           separately pulled them apart mid-entrance, which is the one thing a
-           lockup must never do -- the left alignment only reads as deliberate if
-           the two arrive already assembled. The I is exempt: it belongs to the
-           "AI" cluster, not to that alignment. */
+           Per-letter build does not violate the "arrive assembled" rule that
+           kept SOLMATE and MARINE on one animation. That rule protects the
+           M-to-S left alignment, and it still holds: the M is the first letter
+           in and lands in its final position, so the alignment is established
+           at 260ms and nothing moves relative to it afterwards. */
+
+        /* Real springs, not bezier impressions of them. cubic-bezier cannot
+           express overshoot-and-settle -- it has one control curve, so the
+           bounce and the recovery have to share it. linear() takes a sampled
+           position list, so these are an actual damped harmonic oscillator
+           (stiffness/damping/mass 170/20/1 and 240/26/1) evaluated to its own
+           settle time. Durations below MUST match those settle times or the
+           physics is wrong: 691ms and 531ms.
+           This is what Motion or Framer would give at runtime; generating the
+           curve at build time gives the same motion for zero bytes, and -- the
+           part that matters here -- without making the splash wait for a JS
+           bundle it is specifically designed to render before. */
+        .splash {
+            --spring-dart: linear(0, 0.0306, 0.1066, 0.2084, 0.3216, 0.4359, 0.5444, 0.6427, 0.7287, 0.8016, 0.8615, 0.9093, 0.9464, 0.9741, 0.9941, 1.0077, 1.0164, 1.0212, 1.0232, 1.0232, 1.0219, 1.0197, 1.0172, 1.0145, 1.0119, 1.0094, 1.0073, 1.0054, 1.0039, 1.0026, 1.0016, 1.0009, 1.0003, 1, 0.9997);
+            --spring-letter: linear(0, 0.0256, 0.0893, 0.1755, 0.2724, 0.3718, 0.4681, 0.5578, 0.6387, 0.7099, 0.7713, 0.8231, 0.8661, 0.9012, 0.9292, 0.9514, 0.9684, 0.9813, 0.9908, 0.9975, 1.0021, 1.0051, 1.0068, 1.0077, 1.0078, 1.0076, 1.0071, 1.0064, 1.0056, 1.0048, 1.0041, 1.0034, 1.0028, 1.0022, 1.0017);
+        }
+
         @keyframes splash-rise {
             from { opacity: 0; transform: translate3d(0, 16px, 0); }
             to   { opacity: 1; transform: none; }
         }
-        .splash-lockup, .splash-sub, .splash-foot {
+        .splash-logo, .splash-sub, .splash-foot {
             opacity: 0;
-            animation: splash-rise 780ms cubic-bezier(.16, 1, .3, 1) forwards;
+            animation: splash-rise 700ms cubic-bezier(.16, 1, .3, 1) forwards;
         }
-        .splash-lockup { animation-delay: 80ms; }
-        .splash-sub    { animation-delay: 1900ms; }
-        .splash-foot   { animation-delay: 2050ms; }
+        .splash-logo { animation-duration: 560ms; animation-delay: 80ms; }
+        .splash-sub  { animation-delay: 2250ms; }
+        .splash-foot { animation-delay: 2400ms; }
+
+        /* Letters rise a little further than the lockup did and on the spring,
+           so the word assembles with weight rather than fading up. */
+        @keyframes splash-letter {
+            from { opacity: 0; transform: translate3d(0, 0.26em, 0); }
+            to   { opacity: 1; transform: none; }
+        }
+        .splash-marine > span {
+            opacity: 0;
+            animation: splash-letter 531ms var(--spring-letter) forwards;
+        }
+        .splash-marine > span:nth-child(1) { animation-delay: 260ms; }
+        .splash-marine > span:nth-child(2) { animation-delay: 312ms; }
+        .splash-marine > span:nth-child(3) { animation-delay: 364ms; }
+        .splash-marine > span:nth-child(4) { animation-delay: 416ms; }
+        .splash-marine > span:nth-child(5) { animation-delay: 468ms; }
+        .splash-marine > span:nth-child(6) { animation-delay: 520ms; }
 
         /* inline-block is REQUIRED, not stylistic: transform is ignored on a
-           non-replaced inline box, so splash-rise would fade without moving. */
+           non-replaced inline box, so this would fade without moving. */
         .splash-i {
             display: inline-block;
             opacity: 0;
-            animation: splash-rise 420ms cubic-bezier(.16, 1, .3, 1) 1840ms forwards;
+            animation: splash-letter 531ms var(--spring-letter) 2020ms forwards;
         }
 
         @keyframes splash-ring-in {
@@ -520,7 +586,7 @@
         .splash-ring {
             opacity: 0;
             transform-box: fill-box; transform-origin: center;
-            animation: splash-ring-in 380ms cubic-bezier(.2, 1.5, .4, 1) 620ms forwards;
+            animation: splash-ring-in 531ms var(--spring-letter) 900ms forwards;
         }
 
         /* pathLength normalises the curve to 100 units, so the dash maths here
@@ -530,21 +596,24 @@
         .splash-route-reveal {
             stroke-dasharray: 100;
             stroke-dashoffset: 100;
-            animation: splash-draw 900ms cubic-bezier(.35, 0, .25, 1) 780ms forwards;
+            animation: splash-draw 880ms cubic-bezier(.35, 0, .25, 1) 1060ms forwards;
         }
 
         /* Arrives along the route's final heading -- up and to the right, out of
            a slight bank -- so it reads as having flown the course rather than
            having been dropped on the end of it. */
+        /* No overshoot keyframe: the spring supplies it. The old bezier faked a
+           bounce by ending above 1, which meant the "overshoot" was baked into
+           the shape and could not settle. */
         @keyframes splash-land {
             from { opacity: 0; transform: translate3d(-26%, 30%, 0) scale(.55) rotate(-14deg); }
-            60%  { opacity: 1; }
+            55%  { opacity: 1; }
             to   { opacity: 1; transform: none; }
         }
         .splash-pointer {
             opacity: 0;
             transform-origin: 60% 88%;
-            animation: splash-land 560ms cubic-bezier(.17, .89, .32, 1.06) 1700ms forwards;
+            animation: splash-land 691ms var(--spring-dart) 1880ms forwards;
         }
 
         @keyframes splash-sweep {
@@ -565,8 +634,9 @@
            simply present, at rest. */
         @media (prefers-reduced-motion: reduce) {
             .splash-wash, .splash-bar { animation: none; }
-            .splash-lockup, .splash-sub, .splash-foot,
-            .splash-ring, .splash-pointer, .splash-i {
+            .splash-logo, .splash-sub, .splash-foot,
+            .splash-ring, .splash-pointer, .splash-i,
+            .splash-marine > span {
                 animation: none; opacity: 1; transform: none;
             }
             /* The route must end up DRAWN, not undrawn. Cancelling the animation
