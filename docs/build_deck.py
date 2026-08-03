@@ -156,6 +156,182 @@ def add_slide(prs: Presentation):
     return slide
 
 
+# ---------------------------------------------------------------- diagrams --
+#
+# Drawn as native PowerPoint shapes rather than exported images, for the same
+# reason the banca mark is: a picture would be a binary asset to keep in sync
+# with a deck whose whole premise is that it cannot drift from the repository.
+# Shapes also stay crisp on a projector at any resolution, and a presenter can
+# nudge a box five minutes before walking on stage.
+
+
+def _box(slide, x, y, w, h, title, sub=None, *, accent=False, muted=False):
+    """One labelled node. `accent` marks the module a slide is really about."""
+    from pptx.enum.shapes import MSO_SHAPE
+
+    shp = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
+    shp.fill.solid()
+    shp.fill.fore_color.rgb = SURFACE
+    shp.line.color.rgb = ADVISORY if accent else HAIRLINE
+    shp.line.width = Pt(1.5 if accent else 1)
+    shp.shadow.inherit = False
+    shp.adjustments[0] = 0.12
+
+    tf = shp.text_frame
+    tf.word_wrap = True
+    tf.margin_left = tf.margin_right = Inches(0.08)
+    tf.margin_top = tf.margin_bottom = Inches(0.04)
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    r = p.add_run()
+    r.text = title
+    r.font.size = Pt(12.5)
+    r.font.bold = True
+    r.font.name = SANS
+    r.font.color.rgb = INK_MUTED if muted else INK
+
+    if sub:
+        p2 = tf.add_paragraph()
+        p2.alignment = PP_ALIGN.CENTER
+        r2 = p2.add_run()
+        r2.text = sub
+        r2.font.size = Pt(9.5)
+        r2.font.name = MONO
+        r2.font.color.rgb = ADVISORY if accent else INK_MUTED
+    return shp
+
+
+def _arrow(slide, x, y, w, h=Pt(9)):
+    from pptx.enum.shapes import MSO_SHAPE
+
+    a = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, x, y, w, h)
+    a.fill.solid()
+    a.fill.fore_color.rgb = HAIRLINE
+    a.line.fill.background()
+    a.shadow.inherit = False
+    return a
+
+
+def _caption(slide, x, y, w, text, *, size=Pt(11), color=INK_MUTED, align=PP_ALIGN.CENTER):
+    tb = slide.shapes.add_textbox(x, y, w, Inches(0.42))
+    tf = tb.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.alignment = align
+    inline_runs(p, text, size, color)
+    return tb
+
+
+def _label(slide, x, y, w, text):
+    """A column heading over a group of nodes."""
+    tb = slide.shapes.add_textbox(x, y, w, Inches(0.3))
+    p = tb.text_frame.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    r = p.add_run()
+    r.text = text.upper()
+    r.font.size = Pt(9.5)
+    r.font.bold = True
+    r.font.name = MONO
+    r.font.color.rgb = ADVISORY
+    return tb
+
+
+def diagram_architecture(slide, top: Emu) -> Emu:
+    """Sense -> decide -> show, with the authority boundary made visible."""
+    y = Emu(int(top))
+    colw = Inches(3.15)
+    x1, x2, x3 = MARGIN, Inches(5.0), Inches(9.5)
+
+    _label(slide, x1, y, colw, "sense")
+    _label(slide, x2, y, Inches(3.6), "decide  ·  deterministic")
+    _label(slide, x3, y, colw, "show")
+
+    ny = Emu(int(y + Inches(0.36)))
+    bh = Inches(0.62)
+    gap = Inches(0.18)
+
+    sensors = [
+        ("Engine loom", "7 streams · 1 Hz"),
+        ("GNSS", "position · speed"),
+        ("Metocean", "wind · wave · current"),
+    ]
+    for i, (t, s) in enumerate(sensors):
+        _box(slide, x1, Emu(int(ny + (bh + gap) * i)), colw, bh, t, s)
+
+    modules = [
+        ("Speed Optimization", "physics + XGBoost wear", True),
+        ("Route Optimization", "same fuel model per leg", True),
+        ("Predictive Maintenance", "z-score + PCA autoencoder", True),
+        ("Safety cut-offs", "rules only · imports no model", False),
+    ]
+    for i, (t, s, acc) in enumerate(modules):
+        _box(slide, x2, Emu(int(ny + (bh + gap) * i)), Inches(3.6), bh, t, s, accent=acc)
+
+    _box(slide, x3, Emu(int(ny + Inches(0.4))), colw, Inches(1.4),
+         "One bridge display", "console · captain view")
+    _box(slide, x3, Emu(int(ny + Inches(2.1))), colw, bh,
+         "Advisory phrasing", "Claude · guarded", muted=True)
+
+    ay = Emu(int(ny + Inches(1.05)))
+    _arrow(slide, Emu(int(x1 + colw + Inches(0.12))), ay, Inches(0.55))
+    _arrow(slide, Emu(int(x2 + Inches(3.6) + Inches(0.12))), ay, Inches(0.55))
+
+    cy = Emu(int(ny + (bh + gap) * 4 + Inches(0.12)))
+    _caption(
+        slide, MARGIN, cy, Emu(int(W - 2 * MARGIN)),
+        "**The models predict and detect. They never decide.** The optimiser picks the RPM, "
+        "the planner picks the track, a rule table trips the alarms — and a test fails if a "
+        "model is ever imported into the safety path.",
+    )
+    return Emu(int(cy + Inches(0.5)))
+
+
+def diagram_sensor_bridge(slide, top: Emu) -> Emu:
+    """Why Problem 1 and Problem 2 are the same measurement."""
+    y = Emu(int(top))
+    mid = Inches(4.9)
+    bw = Inches(3.5)
+
+    _box(slide, mid, y, bw, Inches(0.78),
+         "Exhaust gas temperature", "one sensor, over baseline", accent=True)
+
+    ry = Emu(int(y + Inches(1.35)))
+    _box(slide, MARGIN, ry, Inches(3.3), Inches(0.78),
+         "Robust z-score + PCA", "learns healthy correlations")
+    _box(slide, Inches(9.35), ry, Inches(3.3), Inches(0.78),
+         "XGBoost wear model", "1,326 degradation states")
+
+    oy = Emu(int(ry + Inches(1.15)))
+    _box(slide, MARGIN, oy, Inches(3.3), Inches(0.78),
+         "\"Coolant is drifting\"", "names the stream, never a date")
+    _box(slide, Inches(9.35), oy, Inches(3.3), Inches(0.78),
+         "+ litres / hour", "the wear priced in fuel")
+
+    ay = Emu(int(y + Inches(0.26)))
+    left = slide.shapes.add_shape(13, Inches(4.05), ay, Inches(0.7), Pt(9))  # LEFT_ARROW
+    left.fill.solid()
+    left.fill.fore_color.rgb = HAIRLINE
+    left.line.fill.background()
+    left.shadow.inherit = False
+    _arrow(slide, Emu(int(mid + bw + Inches(0.1))), ay, Inches(0.7))
+
+    _caption(
+        slide, MARGIN, Emu(int(oy + Inches(0.95))), Emu(int(W - 2 * MARGIN)),
+        "A worn engine runs hotter at the same load. The **detector** reads that as an anomaly; "
+        "the **fuel model** prices it in litres per hour. So \"your engine is degrading\" and "
+        "\"it is costing you money\" are not two claims — they are one measurement, read twice.",
+    )
+    return Emu(int(oy + Inches(1.5)))
+
+
+DIAGRAMS = {
+    "architecture": diagram_architecture,
+    "sensor-bridge": diagram_sensor_bridge,
+}
+
+
 def banca_mark(slide, left: Emu, top: Emu, size: Emu) -> None:
     """The outrigger-banca mark, same geometry as the console header.
 
@@ -309,6 +485,20 @@ def content_slide(prs, title: str, body: str, notes: list[str], index: int, tota
 
         line = raw.strip()
         if not line:
+            i += 1
+            continue
+
+        # `<!-- diagram:name -->` on its own line renders a native-shape diagram
+        # in place. Kept as an HTML comment so DECK.md still reads as prose
+        # anywhere Markdown is rendered -- the deck is the document's second
+        # output, not its only one.
+        dm = re.fullmatch(r"<!--\s*diagram:([a-z0-9-]+)\s*-->", line)
+        if dm:
+            draw = DIAGRAMS.get(dm.group(1))
+            if draw is None:
+                raise SystemExit(f"unknown diagram '{dm.group(1)}' in slide: {title}")
+            top = draw(slide, top)
+            tf = None
             i += 1
             continue
 

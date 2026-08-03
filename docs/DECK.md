@@ -87,11 +87,11 @@ captain from [`PRODUCT.md`](../PRODUCT.md).
 ## Slide 3 — One system, three problems, one screen
 
 **On slide (diagram):**
-- Three sensor systems → three parallel AI modules → **one bridge display**.
-  1. **Speed Optimization** — cheapest throttle that still meets the schedule.
-  2. **Route Optimization** — cheapest lawful track for the same arrival.
-  3. **Predictive Maintenance** — engine health, honest about its own maturity.
-- Cross-cutting: **Auditable Emissions Layer** (Problem 3) rides on the fuel model.
+
+<!-- diagram:architecture -->
+
+- Cross-cutting: the **Auditable Emissions Layer** rides on the same fuel model,
+  so it needs no sensor the other three have not already earned.
 
 **Speaker notes:** The architectural claim that ties it together: **there is one
 fuel model in this system.** Speed, Route and Emissions are all scored by it, so
@@ -197,8 +197,8 @@ print on every training run, so if the tree ever stops earning it, we'd see it.
   - **Phase 2 (after labelled failure history exists):** component-level RUL.
 - The contract **refuses** to emit a Phase-2 prediction during Phase 1
   (`packages/contracts/maintenance.py`). The honesty commitment is a validator.
-- The Problem 1 → Problem 2 link is priced: a worn engine's fuel penalty is a
-  line item in litres/hour and pesos/hour.
+
+<!-- diagram:sensor-bridge -->
 
 **Speaker notes:** Most predictive-maintenance demos overclaim on day one. Ours
 physically cannot: the data model rejects a failure-date prediction before the
