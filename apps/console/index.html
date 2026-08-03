@@ -12,25 +12,42 @@
          and the hull-plus-two-floats silhouette is what still reads. -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-12 -13 24 24'%3E%3Cellipse cx='-9.6' cy='-0.4' rx='1.5' ry='8.4' fill='%23f97316'/%3E%3Cellipse cx='9.6' cy='-0.4' rx='1.5' ry='8.4' fill='%23f97316'/%3E%3Cpath d='M0 -12 C-2.2 -8.4 -4.6 -4 -4.6 2 L-4.2 9.2 Q0 10.6 4.2 9.2 L4.6 2 C4.6 -4 2.2 -8.4 0 -12 Z' fill='%23f97316'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="/src/index.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Three origins are contacted before anything paints; the handshakes cost
+         more than the files on a bad connection. -->
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <!-- 800 is not decoration: the splash lockup asks for it, and CSS font
+         matching falls BACK to 700 rather than synthesising when the weight is
+         absent -- so without it the largest type on screen silently renders a
+         whole weight lighter than the mark it is reproducing. -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
+    <!-- Every one of these is `defer`, and that is load-bearing rather than
+         tidy. Without it the parser STOPS here and never reaches <body> -- so
+         the splash, whose entire job is to put something on screen instantly,
+         cannot paint until ~1.5MB of map and chart libraries has downloaded AND
+         executed. On venue wifi that is a blank page for seconds, then a splash.
+         Nothing needs them synchronously: the only consumer is main.js, which is
+         type="module" and therefore already deferred. Deferred classic scripts
+         and module scripts share one queue and run in document order, so these
+         still execute first. -->
     <!-- Nipple.js for Joystick -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
     
     <!-- Three.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <!-- MapLibre GL JS -->
-    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <script defer src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
     <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 
     <!-- Turf.js Spatial GIS Engine -->
-    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
     <!-- Chart.js Data Analytics Engine -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <style>
         html, body {
@@ -141,105 +158,307 @@
          once-per-visitor because a nine-step tour on every load is hostile.
          Same banca mark as the header: one boat, drawn once, used everywhere. -->
     <div id="splashScreen" role="status" aria-live="polite" aria-label="Marine-AI is starting"
-         class="splash fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden">
+         class="splash">
 
         <!-- A slow horizon wash behind everything. Two very low-contrast radial
              pools, drifting: enough to stop a flat black rectangle reading as a
              page that failed to load, not enough to compete with the wordmark. -->
         <div class="splash-wash" aria-hidden="true"></div>
 
-        <div class="relative flex flex-col items-center px-6">
-            <!-- Stacked lockup, per the supplied reference: SOLMATE above,
-                 MARINE-AI below and indented so it begins partway along the
-                 wordmark rather than under its first letter. Measured off the
-                 asset rather than eyeballed -- the wordmark occupies 27%-86% of
-                 the PNG's width (the rest is the sunburst and bearing), and the
-                 reference starts MARINE-AI about a third of the way into it, so
-                 the indent is expressed as a fraction of the logo width and the
-                 two stay locked together at any size.
+        <div class="splash-col">
+            <!-- The lockup, per the supplied concept: SOLMATE above, MARINE
+                 below it and left-aligned to it, and the "A" of AI replaced by a
+                 navigation pointer that a dotted route arrives at.
+                 The route and the pointer are geometry, not picture. They carry
+                 the entire idea of the mark -- a course plotted, a heading
+                 reached -- so they have to be drawable, and a flat PNG cannot be
+                 drawn on. Only SOLMATE stays raster, because its wordmark is
+                 custom type that no font stack here can reproduce.
                  One mark, not two: the banca is the app's icon and lives in the
                  header, so repeating it here would put two logos in one eyeline. -->
             <div class="splash-lockup">
-                <img src="/brand/solmate.png" alt="SOLMATE Technology"
+                <img src="/brand/solmate-wordmark.png" alt=""
                      class="splash-logo select-none" draggable="false">
-                <h1 class="splash-word">Marine-AI</h1>
+
+                <h1 class="splash-word">
+                    <!-- The visible line spells MARINE, a pointer, then I. That
+                         is a picture of the word, not the word, so the readable
+                         name is carried separately and the composition is hidden
+                         from assistive tech entirely. -->
+                    <span class="splash-sr">SOLMATE Marine-AI</span>
+                    <span class="splash-wordline" aria-hidden="true">
+                        <span class="splash-marine">Marine</span>
+
+                        <span class="splash-mark">
+                            <!-- The route is anchored to the POINTER, not to the
+                                 line, and grows leftwards from it. Anchored the
+                                 other way its endpoint would drift with however
+                                 wide "MARINE" happens to render on a given
+                                 platform, and the one thing the mark cannot
+                                 survive is a route that stops short of the
+                                 pointer it is supposed to arrive at. -->
+                            <svg class="splash-route" viewBox="0 0 380 52" fill="none" aria-hidden="true">
+                                <defs>
+                                    <!-- Drawing a DOTTED line on cannot be done
+                                         with stroke-dashoffset: the dash array is
+                                         already spoken for making the dots, so
+                                         animating the offset slides the dots
+                                         along the path instead of extending it.
+                                         The dots are therefore static, and a
+                                         thick solid stroke of the same path is
+                                         animated as a mask -- the reveal travels,
+                                         the dots stay put. -->
+                                    <!-- userSpaceOnUse, not the default. An
+                                         objectBoundingBox mask region is the
+                                         path's bbox padded by 10%, and this
+                                         path's bbox is only ~25 units tall, so
+                                         the padding comes to 2.5 units against a
+                                         round cap that needs 5 -- the top and
+                                         bottom dots were being shaved flat. -->
+                                    <mask id="mai-route-mask" maskUnits="userSpaceOnUse"
+                                          x="0" y="-10" width="380" height="72">
+                                        <path class="splash-route-reveal"
+                                              d="M36 28C120 50 244 52 352 22"
+                                              stroke="#fff" stroke-width="24" fill="none"
+                                              stroke-linecap="round" pathLength="100"/>
+                                    </mask>
+                                </defs>
+                                <path d="M36 28C120 50 244 52 352 22"
+                                      stroke="#f2731c" stroke-width="10" fill="none"
+                                      stroke-linecap="round" stroke-dasharray="0.1 26"
+                                      mask="url(#mai-route-mask)"/>
+                                <!-- On the path, not floating above it. The ring
+                                     is the departure point, so the first dot has
+                                     to leave FROM it; at cy=15 against a path
+                                     starting at y=24 it sat ~13px clear of its
+                                     own route and clipped through MARINE's M. -->
+                                <circle class="splash-ring" cx="14" cy="31" r="10"
+                                        stroke="#f97316" stroke-width="7" fill="none"/>
+                            </svg>
+
+                            <!-- Two faces meeting on a fold from the apex, which
+                                 is what makes it read as a solid dart rather than
+                                 a flat triangle. The concept shades the left face
+                                 near-black against white; that is inverted here,
+                                 because on black a near-black face is not a
+                                 shadow, it is a hole.
+                                 The lit face is #f97316, not the brighter
+                                 #fb923c it started as: at 9.28:1 the dart was
+                                 out-valuing MARINE's brightest pixel (8.55:1)
+                                 and pulling the eye first. On white -- where the
+                                 concept was drawn -- the blue mass dominates and
+                                 the orange is an accent; on black that inverts
+                                 unless the dart is brought down to the ring's
+                                 level. The fold still reads at 1.85:1. -->
+                            <svg class="splash-pointer" viewBox="0 0 100 165" fill="none" aria-hidden="true">
+                                <path d="M77 0 L0 136 L48 146 Z" fill="#c2410c"/>
+                                <path d="M77 0 L48 146 L100 165 Z" fill="#f97316"/>
+                            </svg>
+                        </span>
+
+                        <!-- Arrives WITH the dart, not with the wordmark. Held
+                             back, the line reads "MARINE _ I" for two seconds --
+                             an orphan I after a gap, which is the most
+                             typo-shaped thing a wordmark can do. Landing them
+                             together means the line reads as the complete word
+                             "MARINE" throughout the build, and "AI" is spelt at
+                             the moment the heading arrives. -->
+                        <span class="splash-i">I</span>
+                    </span>
+                </h1>
             </div>
 
-            <p class="splash-sub mt-6 text-sm max-w-sm leading-snug text-center">
+            <p class="splash-sub">
                 Retrofit fuel, route and engine-health advice for Philippine passenger boats.
             </p>
 
-            <div class="splash-foot mt-9 flex flex-col items-center gap-2.5">
-                <div class="h-[2px] w-40 rounded-full bg-slate-800/70 overflow-hidden" aria-hidden="true">
-                    <div class="splash-bar h-full w-1/3 rounded-full"></div>
+            <div class="splash-foot">
+                <div class="splash-track" aria-hidden="true">
+                    <div class="splash-bar"></div>
                 </div>
-                <p id="splashStatus" class="splash-status text-[11px] font-mono tracking-wide">Starting the optimiser…</p>
+                <p id="splashStatus" class="splash-status">Starting the optimiser…</p>
             </div>
         </div>
     </div>
 
     <style>
-        /* Inline: the splash must paint and animate on the first frame, before
-           the hashed CSS bundle has been fetched. */
+        /* SELF-CONTAINED, deliberately. Not one Tailwind utility is load-bearing
+           here any more. It used to be: `fixed inset-0 z-[9999] flex items-center
+           justify-center` supplied the entire full-viewport cover, and the
+           progress widget had no dimensions at all without `h-[2px] w-40`. The
+           file claimed to survive without the bundle while depending on it for
+           100% of its layout. Utilities live in @layer utilities and this block
+           is unlayered, so these win regardless of source order.
+
+           ONE variable drives the whole mark. Every size is a fraction of it, so
+           the route cannot drift off the dart and MARINE cannot slide out from
+           under SOLMATE at some viewport nobody tested. It is declared HERE
+           rather than on .splash-lockup because the strapline and the progress
+           row are the lockup's SIBLINGS -- scoped to the lockup they could not
+           see it, which is how their spacing ended up in absolute rem while the
+           mark scaled with the viewport, detaching them on a phone.
+           The fractions come off the concept art: SOLMATE with its sunburst runs
+           ~46% of the mark's width and MARINE's stem is flush with the S. */
         .splash {
-            background:
-                radial-gradient(120% 90% at 50% 8%, #0d1a2e 0%, #050b16 46%, #020617 100%);
+            /* Not 88vw: the column below carries 1.5rem of padding each side, so
+               88vw overflows it under ~400px and overflow:hidden then clips the
+               mark silently rather than scrolling. */
+            --mark-w: min(660px, calc(100vw - 3rem));
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background: #000;
             /* 600ms, matching SPLASH_FADE_MS in main.js. If you change one,
                change the other -- a mismatch removes the node mid-fade. */
             transition: opacity 600ms cubic-bezier(.4, 0, .2, 1);
         }
+        /* The fade hook main.js toggles. It was `opacity-0` -- a Tailwind
+           utility -- so a missing bundle turned the dissolve into a hard cut at
+           remove(). Defined here, the fade cannot be taken away. */
+        .splash.is-out { opacity: 0; }
 
-        /* Text is warmed toward the brand rather than sitting as stark white on
-           near-black. Pure #fff against #020617 is about 19:1 -- technically
-           excellent and visually harsh, and it made the wordmark read as a
-           separate element pasted over the logo instead of belonging with it.
-           Each line now carries a little of the orange, weakening down the
-           hierarchy, and the whole group reads as one temperature.
-           Everything here still clears WCAG AA comfortably; the dimmest, the
-           status line at #7c8698, is ~5.6:1 on this background. */
-        /* One variable drives the lockup so the two never drift apart. The
-           indent and the type size are both fractions of it, taken from the
-           reference: MARINE-AI begins ~48% across the logo (a third of the way
-           into the wordmark itself) and its caps run ~1.5x the SOLMATE caps. */
-        .splash-lockup {
-            --logo-w: min(320px, 76vw);
-            display: block;
+        .splash-col {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            /* One axis. The lockup is left-aligned internally (MARINE's M flush
+               with SOLMATE's S); centring the strapline under it put two
+               alignment systems in one composition, and left the text sitting
+               ~17px optically left of the mark it belongs to. */
+            align-items: flex-start;
+            padding: 0 1.5rem;
         }
-        .splash-logo { width: var(--logo-w); display: block; }
+
+        .splash-lockup { display: block; width: var(--mark-w); }
+        /* Explicit width, not shrink-to-fit. With display=swap the lockup was
+           measured off whatever font was resolved at the time, so when Inter
+           arrived mid-entrance the block's width changed and the whole mark
+           jumped sideways. */
+        .splash-logo { width: calc(var(--mark-w) * 0.46); display: block; }
+
+        .splash-sr {
+            position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+            overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+        }
+
         .splash-word {
-            /* Pulled up hard: the PNG carries roughly a quarter of its height as
-               clear space under the wordmark, so without this the two read as
-               two separate lines rather than one lockup. */
-            /* 0.478, not 0.30. The indent has to be measured from where the
-               WORDMARK starts (27% into the file), not the file's left edge --
-               the first 15% of the PNG is transparent bearing around the
-               sunburst. Reference puts MARINE-AI ~35% along the wordmark, and
-               the wordmark spans 27%-86%, so: 0.271 + 0.35 x 0.588 = 0.478. */
-            margin: calc(var(--logo-w) * -0.085) 0 0 calc(var(--logo-w) * 0.478);
-            font-size: calc(var(--logo-w) * 0.205);
+            /* Left inset lines MARINE's M up with SOLMATE's S rather than with
+               the image edge -- the first ~15% of the trimmed PNG is sunburst,
+               not letterform. Negative top closes the clear space the sunburst's
+               lower rays leave under the baseline. */
+            margin: calc(var(--mark-w) * -0.042) 0 0 calc(var(--mark-w) * 0.078);
+            font-size: calc(var(--mark-w) * 0.163);
             font-weight: 800;
-            letter-spacing: -0.015em;
+            letter-spacing: -0.02em;
             line-height: 1;
             text-transform: uppercase;
-            background: linear-gradient(180deg, #fdf3e7 0%, #f6d9bd 62%, #f0bf95 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
         }
-        /* Gradient text disappears entirely if background-clip is unsupported,
-           so a solid colour is painted first and only overridden where the
-           browser can honour the clip. */
-        @supports not ((-webkit-background-clip: text) or (background-clip: text)) {
-            .splash-word { color: #fbead8; background: none; }
+        .splash-wordline { display: inline-flex; align-items: stretch; position: relative; }
+
+        /* The concept's blue is #1550c4, chosen against white, where it is a
+           comfortable 7:1. On black it inverts to 2.96:1 -- under the 3:1 WCAG
+           asks of large text, and visibly muddy next to the orange. Hue kept
+           (218.2 deg against the brand's 219.8), value lifted until it clears:
+           5.95:1, which passes for normal text let alone display.
+
+           FLAT, not a gradient. The first attempt ramped #82b4ff to #2f6fe4,
+           which swings luminance 1.73x inside a single cap and reads as a bevel
+           -- the one thing in the frame that looked like a template effect
+           rather than a logo. The concept is flat, so this is flat. It also
+           removes the background-clip:text dependency entirely, and with it the
+           @supports fallback and a known Chrome bug where clipped text renders
+           transparent under a composited ancestor animation (which .splash-rise
+           on the lockup is). */
+        /* z-index 2 against the mark's 1. The mark creates its own stacking
+           context, so the route and the pointer both sit under the letterforms
+           as one group -- which is what the route needs (it passes beneath the
+           baseline) and costs the pointer nothing, since it never overlaps
+           them. Ordering them individually does not work: children of a
+           stacking context cannot be raised out of it. */
+        .splash-marine, .splash-i {
+            position: relative; z-index: 2;
+            color: #4a86ef;
         }
-        .splash-sub    { color: #9aa6b8; }
-        .splash-status { color: #7c8698; }
-        .splash-bar    { background: linear-gradient(90deg, #c2410c 0%, #f97316 50%, #fdba74 100%); }
+        @media (forced-colors: active) {
+            .splash-marine, .splash-i { color: CanvasText; }
+        }
+
+        .splash-mark {
+            position: relative; z-index: 1;
+            display: inline-block;
+            width: 0.80em;
+            /* The concept sets the dart well off the E and tight to the I, and
+               the leaning silhouette does the rest: the apex at 77% across the
+               box already pulls the I close optically, so it needs no negative
+               margin to help it. */
+            margin: 0 0 0 0.20em;
+        }
+        /* Roughly twice cap height, per the concept, and overhanging the
+           baseline. The dart breaking the cap line on both sides is what stops
+           it reading as a letter and starts it reading as an instrument. */
+        .splash-pointer {
+            position: absolute; left: 0; bottom: -0.14em;
+            width: 100%; height: auto;
+        }
+        /* Wide enough to run back under MARINE and low enough to clear the
+           baseline -- the route passes beneath the word, it does not cross it. */
+        .splash-route {
+            /* right: 0.42em stops the dots CLEAR of the dart. At 0.30 the last
+               of them ran under its opaque dark face and simply vanished, which
+               inverts the whole point of the mark -- the course has to arrive at
+               the heading, not disappear behind it. */
+            position: absolute; right: 0.42em; bottom: -0.38em;
+            width: 5.2em; height: 0.712em;
+            pointer-events: none; overflow: visible;
+        }
+
+        /* Sized off --mark-w, not absolute rem. These are the lockup's siblings,
+           so with the variable scoped to .splash they finally scale WITH the mark
+           instead of staying put while it shrinks. */
+        .splash-sub {
+            color: #93a0b4;
+            margin-top: calc(var(--mark-w) * 0.075);
+            max-width: calc(var(--mark-w) * 0.72);
+            font-size: 0.875rem;
+            line-height: 1.375;
+        }
+        .splash-foot {
+            margin-top: calc(var(--mark-w) * 0.068);
+            display: flex; flex-direction: column;
+            align-items: flex-start; gap: 0.625rem;
+        }
+        .splash-track {
+            height: 2px; width: calc(var(--mark-w) * 0.38);
+            border-radius: 9999px; overflow: hidden;
+            /* Was Tailwind's bg-slate-800/70, which computes to 1.24:1 on black
+               -- invisible. What shipped was a lone orange dash floating in
+               nothing, reading as an artifact rather than a progress bar. */
+            background: #2f3a4d;
+        }
+        /* 0.75rem, not 11px. index.css sets --text-min: 0.75rem and states that
+           nothing in this interface may go below it; the splash was breaking the
+           project's own floor. */
+        .splash-status {
+            color: #79839a; font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace; letter-spacing: 0.025em;
+        }
+        .splash-bar {
+            height: 100%; width: 33.333%; border-radius: 9999px;
+            background: linear-gradient(90deg, #c2410c 0%, #f97316 50%, #fdba74 100%);
+        }
+        /* Kept, at half strength. On the old navy field this was scene-setting;
+           on black its only job is to stop a flat black rectangle reading as a
+           page that failed to paint. Any stronger and it stops being black. */
         .splash-wash {
             position: absolute; inset: -20%;
             background:
-                radial-gradient(38% 26% at 22% 30%, rgba(249,115,22,.10), transparent 70%),
-                radial-gradient(34% 24% at 78% 68%, rgba(56,189,248,.07), transparent 70%);
+                radial-gradient(38% 26% at 24% 32%, rgba(249,115,22,.07), transparent 70%),
+                radial-gradient(34% 24% at 76% 68%, rgba(56,189,248,.04), transparent 70%);
             animation: splash-drift 14s ease-in-out infinite alternate;
         }
         @keyframes splash-drift {
@@ -247,43 +466,131 @@
             to   { transform: translate3d( 2.5%,  1.5%, 0) scale(1.06); }
         }
 
-        /* One staggered entrance. Everything rises a little and fades in, in the
-           order a reader takes it: brand, rule, product, line, progress. Opacity
-           and transform only -- both compositor-driven, so the sequence stays
-           smooth while the app is still parsing behind the curtain. */
+        /* The sequence tells the mark's own story, in the order it would happen:
+           the wordmark is there, a departure point is set, a course is plotted,
+           and a heading arrives to complete the word.
+
+              80ms  lockup rises   (SOLMATE + MARINE, a COMPLETE word)
+             620ms  ring pops      (the departure point)
+             780ms  route draws    -- completes 1680ms
+            1700ms  dart lands     -- the heading arrives
+            1840ms  the I joins it -- and only now does it read "AI"
+            1900ms  strapline
+            2050ms  progress
+
+           Settled ~2.9s against a 4.2s hold: ~1.3s of calm, which is the band
+           where a pause reads as "finished" rather than "stuck". Animation
+           running right up to the dismissal reads as an app that was
+           interrupted rather than one that finished -- which is also why the
+           progress sweep is capped rather than infinite.
+
+           The route now COMPLETES at 1680ms and the dart launches at 1700ms.
+           Previously the dart launched at 2120 while the route ran to 2330: the
+           heading set off before the course it flew in on had finished drawing.
+
+           The lockup still rises as ONE element. Animating SOLMATE and MARINE
+           separately pulled them apart mid-entrance, which is the one thing a
+           lockup must never do -- the left alignment only reads as deliberate if
+           the two arrive already assembled. The I is exempt: it belongs to the
+           "AI" cluster, not to that alignment. */
         @keyframes splash-rise {
-            from { opacity: 0; transform: translate3d(0, 14px, 0); }
+            from { opacity: 0; transform: translate3d(0, 16px, 0); }
             to   { opacity: 1; transform: none; }
         }
-        /* The lockup rises as ONE element. Animating the logo and the wordmark
-           separately pulled them apart mid-entrance, which is the one thing a
-           lockup must never do -- the indent only reads as deliberate if the two
-           arrive already assembled. */
         .splash-lockup, .splash-sub, .splash-foot {
             opacity: 0;
-            animation: splash-rise 900ms cubic-bezier(.16, 1, .3, 1) forwards;
+            animation: splash-rise 780ms cubic-bezier(.16, 1, .3, 1) forwards;
         }
-        .splash-lockup { animation-delay: 60ms; }
-        .splash-sub    { animation-delay: 420ms; }
-        .splash-foot   { animation-delay: 600ms; }
+        .splash-lockup { animation-delay: 80ms; }
+        .splash-sub    { animation-delay: 1900ms; }
+        .splash-foot   { animation-delay: 2050ms; }
+
+        /* inline-block is REQUIRED, not stylistic: transform is ignored on a
+           non-replaced inline box, so splash-rise would fade without moving. */
+        .splash-i {
+            display: inline-block;
+            opacity: 0;
+            animation: splash-rise 420ms cubic-bezier(.16, 1, .3, 1) 1840ms forwards;
+        }
+
+        @keyframes splash-ring-in {
+            from { opacity: 0; transform: scale(.3); }
+            to   { opacity: 1; transform: none; }
+        }
+        .splash-ring {
+            opacity: 0;
+            transform-box: fill-box; transform-origin: center;
+            animation: splash-ring-in 380ms cubic-bezier(.2, 1.5, .4, 1) 620ms forwards;
+        }
+
+        /* pathLength normalises the curve to 100 units, so the dash maths here
+           does not have to know the path's real arc length -- change the `d` and
+           this keeps working. */
+        @keyframes splash-draw { to { stroke-dashoffset: 0; } }
+        .splash-route-reveal {
+            stroke-dasharray: 100;
+            stroke-dashoffset: 100;
+            animation: splash-draw 900ms cubic-bezier(.35, 0, .25, 1) 780ms forwards;
+        }
+
+        /* Arrives along the route's final heading -- up and to the right, out of
+           a slight bank -- so it reads as having flown the course rather than
+           having been dropped on the end of it. */
+        @keyframes splash-land {
+            from { opacity: 0; transform: translate3d(-26%, 30%, 0) scale(.55) rotate(-14deg); }
+            60%  { opacity: 1; }
+            to   { opacity: 1; transform: none; }
+        }
+        .splash-pointer {
+            opacity: 0;
+            transform-origin: 60% 88%;
+            animation: splash-land 560ms cubic-bezier(.17, .89, .32, 1.06) 1700ms forwards;
+        }
 
         @keyframes splash-sweep {
             0%   { transform: translateX(-120%); }
             100% { transform: translateX(320%); }
         }
-        .splash-bar { animation: splash-sweep 1.25s cubic-bezier(.45, 0, .55, 1) infinite; }
+        /* Deliberately infinite, and it is the one thing still moving during the
+           calm. Capping it was tried and is worse: the sweep ends at
+           translateX(320%), i.e. off the end of the track, so a capped bar
+           leaves an empty rail sitting under the words for the best part of a
+           second -- which reads as a loader that died, not one that finished.
+           The "settles into calm" claim above is about the MARK. An
+           indeterminate progress bar that stops indicating while the splash is
+           still up is not calm, it is broken. */
+        .splash-bar { animation: splash-sweep 1.25s cubic-bezier(.45, 0, .55, 1) 2050ms infinite; }
 
         /* All of the above is decoration. Under reduced-motion everything is
            simply present, at rest. */
         @media (prefers-reduced-motion: reduce) {
             .splash-wash, .splash-bar { animation: none; }
-            .splash-lockup, .splash-sub, .splash-foot {
+            .splash-lockup, .splash-sub, .splash-foot,
+            .splash-ring, .splash-pointer, .splash-i {
                 animation: none; opacity: 1; transform: none;
             }
+            /* The route must end up DRAWN, not undrawn. Cancelling the animation
+               alone would leave the reveal mask at its from-state and the route
+               would simply never appear. */
+            .splash-route-reveal { animation: none; stroke-dashoffset: 0; }
             .splash-bar { width: 100%; }
             .splash { transition: none; }
         }
     </style>
+
+    <!-- The splash runs on TWO clocks and they do not share an origin.
+         `main.js` holds the splash with `SPLASH_MIN_MS - performance.now()`, and
+         performance.now() counts from navigationStart. The CSS animation-delays
+         above count from the splash's first paint. Everything spent in <head>
+         separates the two, so on a slow connection the hold is measured against
+         a clock that started long before the animation did -- and the dart, the
+         last thing to arrive, gets dismissed before it lands.
+         Stamping inside rAF here anchors the timer to the same moment the
+         animation actually begins. Inline and immediate: it must not wait for
+         the module graph, or it re-introduces the very offset it removes. -->
+    <script>
+        requestAnimationFrame(function () { window.__splashT0 = performance.now(); });
+    </script>
 
     <header class="bg-slate-900/95 backdrop-blur-md border-b border-orange-500/30 px-3 md:px-5 py-2 flex flex-col md:flex-row justify-between items-center shadow-lg z-[3000] relative gap-2 md:gap-4 w-full">
         <div class="flex items-center justify-between w-full md:w-auto shrink-0">

@@ -5682,7 +5682,7 @@ function refreshAnalyticsSidebar() {
             // being removed 120ms into a fade that had not finished -- a visible
             // pop rather than a dissolve, and exactly the kind of thing that only
             // shows up when you watch it rather than read it.
-            const SPLASH_MIN_MS = 4400;
+            const SPLASH_MIN_MS = 4200;
             const SPLASH_FADE_MS = 600;
 
             function startGuideIfUnseen() {
@@ -5700,11 +5700,21 @@ function refreshAnalyticsSidebar() {
                 const status = document.getElementById('splashStatus');
                 if (status) status.textContent = 'Optimiser ready.';
 
-                const elapsed = performance.now();
+                // Measured from the splash's FIRST PAINT (stamped in a rAF in
+                // index.html), not from navigationStart. performance.now() alone
+                // includes everything spent in <head> before the splash existed,
+                // so on a slow connection the hold expires while the animation
+                // is still mid-sequence and the dart never lands on screen.
+                // Falling back to 0 keeps the old behaviour if the stamp is
+                // missing, which is the safe direction: dismiss late, not early.
+                const elapsed = performance.now() - (window.__splashT0 ?? 0);
                 const wait = Math.max(0, SPLASH_MIN_MS - elapsed);
 
                 setTimeout(() => {
-                    splash.classList.add('opacity-0');
+                    // Not Tailwind's `opacity-0`: the fade must not depend on a
+                    // bundle that may not have arrived. `.splash.is-out` is
+                    // defined in the inline block alongside the transition.
+                    splash.classList.add('is-out');
                     setTimeout(() => {
                         // `remove`, not `hidden`: nothing behind it should ever be
                         // covered by a transparent full-screen layer that still eats
