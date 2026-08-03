@@ -13,10 +13,69 @@ No new vessel. No engine replacement. It installs onto boats already in service.
 - **Live demo:** _(deployed before the sprint — see `docs/DEPLOY.md`)_
 - **Project overview and status:** [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md)
 - **Data sources and licences:** [`docs/DATA.md`](docs/DATA.md)
+- **Third-party resources and licences:** [`docs/THIRD-PARTY.md`](docs/THIRD-PARTY.md)
 - **Deviations from the technical profile:** [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md)
 - **Pitch-deck scaffold:** [`docs/DECK.md`](docs/DECK.md)
 - **What the display is for:** [`PRODUCT.md`](PRODUCT.md)
 - **Deploying the public demo:** [`docs/DEPLOY.md`](docs/DEPLOY.md)
+
+---
+
+## Problem statement and AI-based solution
+
+### The problem
+
+A Philippine wooden-hull or fiberglass passenger banca burns diesel that its
+operator cannot measure, on a route nobody costed, behind an engine that gets
+attention only after it fails. Three consequences follow, and they compound:
+
+1. **Fuel is the largest controllable cost and it is spent blind.** There is no
+   fuel-flow meter on these boats. The throttle setting is chosen by habit, and
+   the difference between the habitual setting and the efficient one is invisible
+   to the person holding the lever.
+2. **Breakdowns are discovered at sea.** Maintenance is reactive. A cooling
+   problem announces itself when the engine is already overheating, on a boat
+   carrying passengers, often out of sight of a wharf.
+3. **Emissions cannot be evidenced.** Operators have no record they could show an
+   LGU, MARINA, or a green-finance lender — so efficiency gains that did happen
+   earn nothing, because nobody can prove them.
+
+None of this is solved by a new vessel. The fleet already exists and will not be
+replaced; anything that helps has to retrofit onto boats currently in service.
+
+### The AI-based solution
+
+Marine-AI is a retrofit advisory system. Three AI modules run against sensor data
+and converge on one bridge display:
+
+| Module | What it learns | What it outputs |
+|---|---|---|
+| **Speed Optimization** | Fuel penalty of a worn engine (XGBoost on 1,326 wear states, served as ONNX) | A recommended RPM, and what it saves in litres/hour |
+| **Route Optimization** | Sea state across the strait (gradient-boosted direction models + climatological lookup, trained on 2.5 years of real reanalysis) | A track costed leg-by-leg through the *same* fuel model, with depth and wave-height as hard constraints |
+| **Predictive Maintenance** | This engine's own healthy correlations (PCA autoencoder + robust z-score, pure NumPy) | An anomaly score that names the *drifting sensor stream* — never a component or a failure date |
+
+A fourth deliverable, the **auditable emissions layer**, turns the fuel the first
+two modules save into a monthly CO₂-avoided report measured against the vessel's
+own prior runs on the same route — the evidence problem, solved with zero extra
+sensors.
+
+### The design decision that shapes everything
+
+**The AI predicts and detects. It never decides.**
+
+The optimiser picks the RPM, the planner picks the track, and a deterministic
+rule table trips the safety cutoffs. A language model is used for exactly one
+thing — rewording the resulting sentence into plain English or Filipino — and its
+rewrite is discarded if it changes a number or issues an order.
+
+This is enforced rather than described: `test_safety_never_imports_a_model` reads
+the safety module's own source and fails if anyone ever reaches for a model to
+make a cutoff "smarter". See [The AI-authority boundary](#the-ai-authority-boundary)
+below.
+
+Why it matters: a mis-specified physics coefficient is inspectable and can be
+calibrated against a vessel's own fuel meter. An invisible ML blind spot cannot.
+On a boat carrying passengers, that difference is the whole argument.
 
 ---
 
