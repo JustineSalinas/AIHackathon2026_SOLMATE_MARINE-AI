@@ -203,7 +203,7 @@ degrades. Note that off Vercel the rewrite is fetched in the *background* and th
 template ships immediately, so this check only means anything against the
 deployed API (or locally with `MARINE_AI_ADVISORY_BLOCKING=1`).
 
-`ANTHROPIC_MODEL` (default `claude-opus-5`), `MARINE_AI_ADVISORY_TIMEOUT_S`,
+`ANTHROPIC_MODEL` (default `claude-haiku-4-5`), `MARINE_AI_ADVISORY_TIMEOUT_S`,
 `MARINE_AI_ADVISORY_BLOCKING` and `MARINE_AI_ADVISORY_DISABLED` are optional
 overrides — see `.env.example`. Nothing here needs the bridge project touched;
 the display just renders whichever `advisory_source` the API sends.

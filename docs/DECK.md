@@ -360,8 +360,8 @@ captain is the impact claim).
   180-character sentence does not need a frontier model. Both were run on the
   same three advisories: `claude-opus-5` and `claude-haiku-4-5` each passed the
   guard 3/3 with every number preserved, and Haiku was **2.2× faster at ⅕ the
-  cost**. The guard is provider-agnostic by design — Gemini passes it too — so
-  the layer is a slot, not a dependency.
+  cost** — so **Haiku is what ships**. The guard is provider-agnostic by design
+  — Gemini passes it too — so the layer is a slot, not a dependency.
 
 **Speaker notes:** Under maritime liability the advisory boundary is a legal
 requirement, not a stylistic choice. So we did not describe it, we built it: the

@@ -183,7 +183,7 @@ Declared in `data/registry.py` (the code refuses to fetch anything undeclared).
   magnitude too slow). Do not list it as a source.
 - **Google/Bing/Esri satellite tiles were rejected** — their terms forbid reuse
   outside their own APIs; the brief grades "licensed or public data only."
-- **Claude (`claude-opus-5`, Anthropic API)** is used for advisory *phrasing
+- **Claude (`claude-haiku-4-5`, Anthropic API)** is used for advisory *phrasing
   only* — never a number, threshold, or recommendation. No third-party model
   weights are shipped in the repo. The model is the code default
   (`services/advisory/phraser.py`) and overridable by `ANTHROPIC_MODEL`; if you

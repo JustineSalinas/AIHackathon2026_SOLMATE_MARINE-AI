@@ -18,7 +18,7 @@ known limits. This file is the licence view; that one is the data-integrity view
 
 | Resource | Role | Licence / terms |
 |---|---|---|
-| **Anthropic Claude** (`claude-opus-5`) | Natural-language advisory layer — **phrasing only**. Rewrites a deterministic sentence; the rewrite is discarded if it changed a number or issued an order. | Commercial API, Anthropic terms of service |
+| **Anthropic Claude** (`claude-haiku-4-5`) | Natural-language advisory layer — **phrasing only**. Rewrites a deterministic sentence; the rewrite is discarded if it changed a number or issued an order. Haiku rather than a frontier model because both were measured on the same task and the smaller one matched it, 2.2× faster at ⅕ the cost. | Commercial API, Anthropic terms of service |
 | **Google Gemini** (`gemini-flash-lite-latest`) | Same role, alternate provider. Default when `GOOGLE_API_KEY` is present. | Commercial API, Google terms of service |
 
 **Neither model makes a decision.** The throttle setting, the route and the

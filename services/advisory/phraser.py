@@ -66,7 +66,17 @@ SOURCE_TEMPLATE = "template"
 #: care whether the sentence was rewritten at all.
 SOURCE_MODELS = frozenset({SOURCE_CLAUDE, SOURCE_GEMINI})
 
-_DEFAULT_MODEL = "claude-opus-5"
+#: Sized to the job by measurement, not reputation. Rewriting one 180-character
+#: sentence is not frontier work: run against the same three advisories on
+#: 2026-08-03, `claude-opus-5` and `claude-haiku-4-5` each passed the guard 3/3
+#: with every number preserved, and Haiku was 2.2x faster at a fifth of the cost.
+#: The faster model also matters on stage -- the rewrite arrives in the
+#: background, so a slower one leaves the display on `template` for longer.
+#:
+#: Note the interaction with `_EFFORT_MODELS` below: Haiku does not accept
+#: `output_config.effort`, which is exactly the trap that made this switch look
+#: impossible until the parameter was made conditional.
+_DEFAULT_MODEL = "claude-haiku-4-5"
 #: Chosen by measuring the live free tier on 2026-08-01, not by reputation.
 #:
 #: The obvious candidates all failed for different reasons: `gemini-2.5-flash`
