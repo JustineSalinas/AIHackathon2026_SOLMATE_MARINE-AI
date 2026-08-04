@@ -90,7 +90,12 @@ def _score(name: str, y_true: np.ndarray, y_pred: np.ndarray) -> Score:
     )
 
 
-def export_onnx(model, X_sample: np.ndarray, path: Path = ONNX_PATH) -> float:
+def export_onnx(
+    model,
+    X_sample: np.ndarray,
+    path: Path = ONNX_PATH,
+    tolerance: float = ONNX_PARITY_TOLERANCE,
+) -> float:
     """Export the chosen model to ONNX and verify it still predicts the same thing.
 
     **Why ONNX is the serving format.** The trained model is an XGBoost booster,
@@ -105,6 +110,16 @@ def export_onnx(model, X_sample: np.ndarray, path: Path = ONNX_PATH) -> float:
 
     Returns the maximum absolute prediction difference, which the caller records
     in the model card so the claim is auditable rather than asserted.
+
+    `tolerance` is ABSOLUTE, and the default is calibrated to this module's own
+    model, whose target is a ratio around 1.0 -- there, 1e-4 absolute is also 1e-4
+    relative. A model predicting on a different scale needs a different number or
+    the same criterion silently becomes stricter: the C-MAPSS RUL regressor in
+    `services/maintenance/train_rul.py` predicts 0-125 cycles, so the default
+    would demand a relative parity of 1e-6 across 400 trees of float32
+    accumulation. Callers on another scale pass their own and justify it; the
+    default is left alone so no existing guard is weakened by this parameter
+    existing.
     """
     import onnxruntime as ort
     from onnxmltools.convert.common.data_types import FloatTensorType
@@ -131,10 +146,10 @@ def export_onnx(model, X_sample: np.ndarray, path: Path = ONNX_PATH) -> float:
     exported = np.asarray(session.run(None, {input_name: sample})[0]).ravel()
     drift = float(np.abs(original - exported).max())
 
-    if drift > ONNX_PARITY_TOLERANCE:
+    if drift > tolerance:
         raise RuntimeError(
             f"ONNX export disagrees with the trained model by {drift:.2e} "
-            f"(tolerance {ONNX_PARITY_TOLERANCE:.0e}). The exported model is not "
+            f"(tolerance {tolerance:.0e}). The exported model is not "
             "the model these metrics describe; refusing to ship it."
         )
     return drift

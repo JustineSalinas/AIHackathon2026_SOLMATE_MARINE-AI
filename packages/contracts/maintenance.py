@@ -172,3 +172,130 @@ class MaintenanceStatus(BaseModel):
                 "not an incidental constraint."
             )
         return self
+
+
+# ---------------------------------------------------------------------------
+# Component life: how much of each component's design life this engine has
+# spent, and how long is left at the duty it is actually being worked at.
+#
+# A SEPARATE model from MaintenanceStatus, and deliberately outside the
+# validator above.
+#
+# That validator stops a Phase 1 unit naming a component or putting a date on
+# it, because under condition monitoring such a claim is a prediction the vessel
+# has not earned -- there is no labelled failure history behind it. What follows
+# names components and quotes months, but it is not that claim. It is a design
+# life published by the maker, divided by the exposure this engine has logged.
+# "Shaft at 62% of design life, about four months left at this duty" is
+# arithmetic a mechanic can redo on paper. "The shaft will fail in four months"
+# is a forecast, and nothing here says it.
+#
+# Keeping the two models apart is what stops that distinction eroding. Folding
+# these fields into MaintenanceStatus would have meant loosening the Phase 1
+# validator, and a loosened validator is one UI change away from a cold-start
+# vessel publishing a Phase 2 claim.
+# ---------------------------------------------------------------------------
+
+
+class ComponentCondition(StrEnum):
+    """Where a component sits against its design life."""
+
+    HEALTHY = "healthy"
+    """More than a third of design life remaining."""
+
+    MONITOR = "monitor"
+    """Between 10% and a third remaining. Plan the part."""
+
+    RENEW_SOON = "renew_soon"
+    """Under 10% remaining. Order it now."""
+
+    BEYOND_DESIGN_LIFE = "beyond_design_life"
+    """Past the published life. Running on borrowed time, which is a statement
+    about the schedule and not a prediction that it is about to break."""
+
+
+class ComponentLife(BaseModel):
+    """One monitored component, scored against its published design life."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    component_id: str = Field(description="Stable key, e.g. 'shaft'.")
+    label_en: str = Field(description="Plain language. 'Propeller shaft'.")
+    label_fil: str
+    system: str = Field(
+        description="Which block of the vessel diagram this belongs to: "
+        "propulsion, engine, fuel or electrical."
+    )
+
+    design_life_wear_hours: float = Field(
+        gt=0,
+        description="The maker's published life, denominated in WEAR-hours rather "
+        "than run-hours. See ComponentLifeReport for why.",
+    )
+    wear_hours_consumed: float = Field(ge=0)
+    wear_hours_remaining: float = Field(
+        description="Negative once past the published life. Signed on purpose: "
+        "'40 hours over' is a different instruction from '40 hours left'."
+    )
+
+    life_score: float = Field(
+        ge=0,
+        le=1,
+        description="Fraction of design life still unspent. 1.0 is new, 0.0 is "
+        "spent. Clamped at zero -- a component past its life is not 'negatively "
+        "healthy', it is simply out of life.",
+    )
+    percent_consumed: float = Field(ge=0)
+
+    months_remaining: float | None = Field(
+        None,
+        ge=0,
+        description="Calendar months to the end of design life at the CURRENT duty "
+        "and the operator's stated running hours per day. None when either is "
+        "unknown, rather than assuming a working pattern the vessel may not have.",
+    )
+    condition: ComponentCondition
+
+
+class ComponentLifeReport(BaseModel):
+    """Every monitored component, resolved against this engine's exposure.
+
+    **Life is counted in wear-hours, not run-hours.** An hour at overload damages
+    a shaft more than an hour at cruise; that is the premise of
+    `services/maintenance/duty.py`, whose severity index is weighted wear-hours
+    per running hour with cruise fixed at 1.0. Multiplying run-hours by that index
+    gives wear-hours, and denominating design lives in wear-hours is what turns
+    the index from a number on a dashboard into a service life that moves.
+
+    Nothing here is learned. The design lives are a committed table, the weights
+    are stated in duty.py and can be argued with, and the rest is division. That
+    is the right amount of machinery for a claim a mechanic has to be able to
+    check against a manual -- and the reason this report can name a part when the
+    anomaly detector next door cannot.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vessel_id: str
+    generated_at: datetime
+
+    wear_hours: float = Field(ge=0, description="Exposure the report was resolved against.")
+    severity_index: float | None = Field(
+        None,
+        description="Duty severity from duty.py. 1.0 is a life spent at cruise. "
+        "None when unknown, in which case months remaining cannot be stated.",
+    )
+    hours_per_day: float | None = Field(
+        None,
+        description="Operator's stated typical running hours per day. The bridge "
+        "between wear-hours and a calendar month.",
+    )
+
+    components: list[ComponentLife]
+    weakest: ComponentLife | None = Field(
+        None, description="Least life remaining. None if the table is empty."
+    )
+    beyond_design_life_count: int = Field(ge=0)
+
+    advisory_en: str
+    advisory_fil: str

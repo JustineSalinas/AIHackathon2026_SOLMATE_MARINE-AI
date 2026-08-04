@@ -30,6 +30,7 @@ from apps.api.schemas import (
     AdviseResponse,
     CurvePoint,
     EmissionsOut,
+    ComponentLifeRequest,
     MaintenanceRequest,
     PowerOut,
     RouteRequest,
@@ -38,7 +39,7 @@ from apps.api.schemas import (
     WearOut,
 )
 from packages.contracts.emissions import EmissionsReport, VoyageRecord
-from packages.contracts.maintenance import MaintenanceStatus
+from packages.contracts.maintenance import ComponentLifeReport, MaintenanceStatus
 from packages.contracts.route import RouteRecommendation
 from packages.contracts.safety import SafetyState
 from packages.contracts.speed import SpeedRecommendation
@@ -49,6 +50,7 @@ from services.emissions import co2_kg
 from services.emissions.report import build_report, to_csv
 from services.maintenance.baseline import fit_from_frames, synthetic_healthy_baseline
 from services.maintenance.detector import detect
+from services.maintenance.lifespan import resolve_component_life
 from services.route.forecast import load_forecast
 from services.route.geo import LatLon
 from services.route.planner import as_route_recommendation, plan_route
@@ -404,6 +406,34 @@ async def maintenance(req: MaintenanceRequest) -> MaintenanceStatus:
             rated_rpm=req.rated_rpm,
         ),
         kind="engine health",
+    )
+
+
+@app.post("/maintenance/component-life", response_model=ComponentLifeReport)
+async def maintenance_component_life(req: ComponentLifeRequest) -> ComponentLifeReport:
+    """How much design life each component has left, at the duty it is worked at.
+
+    The sibling of `/maintenance`, and deliberately not the same answer. That one
+    watches condition and reports what is deviating now. This one spends
+    accumulated wear against the maker's published design lives -- so a shaft
+    reaches its 8000-hour life after 8000 run-hours at cruise, and after about
+    3100 at overload.
+
+    Neither endpoint feeds the other. A design life that moved because an anomaly
+    fired would be a prediction dressed as a service manual, and this build has no
+    labelled failure history to predict from.
+
+    Naming a component here is legitimate where it would not be in
+    `MaintenanceStatus`, because it is a lookup against a published life rather
+    than a forecast of failure. The two live in separate models so that
+    distinction cannot erode -- see the note in packages/contracts/maintenance.py.
+    """
+    return resolve_component_life(
+        vessel_id=req.vessel_id,
+        wear_hours=req.wear_hours,
+        severity_index=req.severity_index,
+        hours_per_day=req.hours_per_day,
+        wear_hours_at_last_renewal=req.wear_hours_at_last_renewal,
     )
 
 
