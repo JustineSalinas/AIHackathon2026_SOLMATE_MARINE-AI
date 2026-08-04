@@ -1391,13 +1391,26 @@
                             <div class="text-xs text-slate-400">Shallow / Squat Effect</div>
                             <div id="outSquatDrag" class="font-bold text-sky-400 hud-font">--</div>
                         </div>
+                        <!-- Gust, period and tide are MEASURED values from Open-Meteo when
+                             the feed is up, and fall back to the console's own models when
+                             it is not. Each label carries its provenance at render time
+                             (obs / est, measured / model) rather than presenting the two
+                             as the same kind of number. -->
                         <div>
-                            <div class="text-xs text-slate-400">Peak Gusts (Realtime)</div>
+                            <div class="text-xs text-slate-400">Peak Gusts</div>
                             <div id="outGustPeak" class="font-bold text-amber-300 hud-font">--</div>
                         </div>
                         <div>
-                            <div class="text-xs text-slate-400">Tidal Phase (12.4h)</div>
+                            <div class="text-xs text-slate-400">Tide Phase</div>
                             <div id="outTidePhase" class="font-bold text-sky-300 hud-font text-sm truncate">--</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-400">Wave Period</div>
+                            <div id="outWavePeriod" class="font-bold text-sky-300 hud-font">--</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-400">Sea State (H/T Steepness)</div>
+                            <div id="outSeaState" class="font-bold text-amber-300 hud-font text-sm truncate">--</div>
                         </div>
                         <div>
                             <div class="text-xs text-slate-400">SFOC & Engine Load</div>

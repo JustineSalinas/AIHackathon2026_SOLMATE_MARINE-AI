@@ -698,8 +698,8 @@ export function createApp(): express.Express {
     const lat = Number(req.query.lat) || 10.6928;
     const lng = Number(req.query.lng) || 122.5644;
     try {
-      const marineUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=wave_height,wave_direction,wave_period,swell_wave_height`;
-      const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m,surface_pressure`;
+      const marineUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=wave_height,wave_direction,wave_period,swell_wave_height,ocean_current_velocity,ocean_current_direction,sea_level_height_msl`;
+      const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure`;
 
       const [marineRes, weatherRes] = await Promise.allSettled([
         fetch(marineUrl),
@@ -732,11 +732,29 @@ export function createApp(): express.Express {
           waveHeightM: marineData.current?.wave_height ?? null,
           wavePeriodS: marineData.current?.wave_period ?? null,
           waveDirDeg: marineData.current?.wave_direction ?? null,
+          // swell_wave_height was requested here and then dropped on the floor --
+          // paid for on every call and never returned. Sea and swell are different
+          // rides at the same total height, so it is worth surfacing.
+          swellHeightM: marineData.current?.swell_wave_height ?? null,
           windSpeedKts:
             weatherData.current?.wind_speed_10m != null
               ? Number((weatherData.current.wind_speed_10m * 0.539957).toFixed(1))
               : null,
           windDirDeg: weatherData.current?.wind_direction_10m ?? null,
+          // Gust, not mean, is what limits a small passenger boat.
+          windGustKts:
+            weatherData.current?.wind_gusts_10m != null
+              ? Number((weatherData.current.wind_gusts_10m * 0.539957).toFixed(1))
+              : null,
+          // km/h -> knots. Open-Meteo Marine reports this in km/h, NOT m/s.
+          currentSpeedKts:
+            marineData.current?.ocean_current_velocity != null
+              ? Number((marineData.current.ocean_current_velocity * 0.539957).toFixed(1))
+              : null,
+          currentDirDeg: marineData.current?.ocean_current_direction ?? null,
+          // Measured sea level, which is what makes the console's tide readout a
+          // reading rather than the output of a generic harmonic model.
+          seaLevelM: marineData.current?.sea_level_height_msl ?? null,
           pressureHpa: weatherData.current?.surface_pressure ?? null,
         },
       });

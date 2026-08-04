@@ -81,7 +81,15 @@ function getConditionsAtETA(etaHours, lat = null, lng = null) {
     const waveHt = ((Array.isArray(mar.wave_height) && mar.wave_height[targetIdx] !== undefined) ? mar.wave_height[targetIdx] : ((Array.isArray(w.wave_height) && w.wave_height[targetIdx] !== undefined) ? w.wave_height[targetIdx] : 0.5)) * offsetMult;
     const waveDir = (Array.isArray(mar.wave_direction) && mar.wave_direction[targetIdx] !== undefined) ? mar.wave_direction[targetIdx] : ((Array.isArray(w.wave_direction) && w.wave_direction[targetIdx] !== undefined) ? w.wave_direction[targetIdx] : 219);
     const precip = (Array.isArray(w.precipitation) && w.precipitation[targetIdx] !== undefined) ? w.precipitation[targetIdx] : 0;
-    const currentSpd = ((Array.isArray(mar.ocean_current_velocity) && mar.ocean_current_velocity[targetIdx] !== undefined) ? mar.ocean_current_velocity[targetIdx] : ((Array.isArray(w.ocean_current_velocity) && w.ocean_current_velocity[targetIdx] !== undefined) ? w.ocean_current_velocity[targetIdx] : 0.6)) * offsetMult;
+    // Open-Meteo Marine reports ocean_current_velocity in km/h; the planner costs
+    // legs in knots. The raw array value is converted, the 0.6 fallback is not --
+    // that constant was already written as knots. Same fix as the console's
+    // getConditionsAtETA, kept in step with it because the two are differenced
+    // against each other by the proactive-reroute check.
+    const rawCurrentKmh = (Array.isArray(mar.ocean_current_velocity) && mar.ocean_current_velocity[targetIdx] !== undefined)
+        ? mar.ocean_current_velocity[targetIdx]
+        : ((Array.isArray(w.ocean_current_velocity) && w.ocean_current_velocity[targetIdx] !== undefined) ? w.ocean_current_velocity[targetIdx] : null);
+    const currentSpd = (rawCurrentKmh !== null && isFinite(rawCurrentKmh) ? rawCurrentKmh * 0.539957 : 0.6) * offsetMult;
     const currentDir = (Array.isArray(mar.ocean_current_direction) && mar.ocean_current_direction[targetIdx] !== undefined) ? mar.ocean_current_direction[targetIdx] : ((Array.isArray(w.ocean_current_direction) && w.ocean_current_direction[targetIdx] !== undefined) ? w.ocean_current_direction[targetIdx] : 252);
 
     return { windSpd, windDir, waveHt, waveDir, precip, currentSpd, currentDir };

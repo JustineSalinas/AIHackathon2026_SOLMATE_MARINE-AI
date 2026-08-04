@@ -171,6 +171,37 @@ needed: wave height, wave direction and ocean current are in its free tier and
 behind OpenWeather's paid tier. It is CC BY 4.0 and needs no API key, so a judge
 can clone and run without registering anywhere.
 
+**Variables the console reads live** (2026-08-04), all keyless and free:
+
+| Source | Variables |
+|---|---|
+| Forecast API | `wind_speed_10m`, `wind_direction_10m`, `wind_gusts_10m` |
+| Marine API | `wave_height`, `wave_direction`, `wave_period`, `ocean_current_velocity`, `ocean_current_direction`, `sea_level_height_msl` |
+
+Two things about this list are worth stating plainly, because both were wrong
+before and both moved published numbers:
+
+- **Tide is now measured, not modelled.** The Tide reading used to come from a
+  generic M2/S2 sine pair with a position-derived phase offset that was invented,
+  not surveyed. It is now Open-Meteo's `sea_level_height_msl`, with flood/ebb read
+  off the slope of the hourly series. The old harmonic model is retained only as a
+  fallback for when the feed is down, and the panel labels which of the two is on
+  screen (`measured` / `model`) rather than presenting them as equivalent.
+- **`ocean_current_velocity` is km/h, not m/s.** The console read it as m/s and
+  multiplied by 1.94384, overstating every current reading by 3.6x — a 1.0 km/h
+  drift displayed as 1.9 kts instead of 0.5 kts, and fed that error into
+  set-and-drift, crab angle, SOG and fuel burn. The route planner and its worker
+  had the same field in km/h and costed legs as though it were knots. Fixed in all
+  three places; `services/route/dataset.py` already had it right, naming the column
+  `current_kmh`. **Any current, drift or fuel figure quoted from a run before
+  2026-08-04 was computed on the overstated value.**
+
+Gusts and wave period are new to this build. Gust rather than mean wind is what
+limits a 17.5 m passenger boat — measured at the demo position a 13.2 kt mean
+carried 27.2 kt gusts, where the console's own gust model assumed a flat 1.35x —
+and period turns wave height into steepness (`H / 1.56T²`), which is the
+difference between riding a long swell and slamming into a short sea.
+
 ## 8. Charted bathymetry instead of sonar — and not yet built
 
 **Profile (§2.1, §3.1):** sonar hardware supplies the depth safety constraint.

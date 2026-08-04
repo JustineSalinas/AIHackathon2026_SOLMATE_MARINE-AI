@@ -623,7 +623,11 @@ import "driver.js/dist/driver.css";
                  log("NavEngine: Using synthetic environmental modeling.", "info");
                  this.forecastData = {
                      weather: { wind_speed_10m: Array(48).fill(12), wind_direction_10m: Array(48).fill(212), precipitation: Array(48).fill(0) },
-                     marine: { wave_height: Array(48).fill(0.5), wave_direction: Array(48).fill(219), ocean_current_velocity: Array(48).fill(0.6), ocean_current_direction: Array(48).fill(252) }
+                     // ocean_current_velocity is km/h here, matching the real Open-Meteo
+                     // field this stands in for -- 1.1 km/h is the ~0.6 kn this used to
+                     // mean. The consumers convert; a knots value here would be silently
+                     // divided again and read as a near-slack 0.3 kn.
+                     marine: { wave_height: Array(48).fill(0.5), wave_direction: Array(48).fill(219), ocean_current_velocity: Array(48).fill(1.1), ocean_current_direction: Array(48).fill(252) }
                  };
             },
             getConditionsAtETA(etaHours, lat = null, lng = null) {
@@ -644,7 +648,15 @@ import "driver.js/dist/driver.css";
                 
                 let baseSpd = (this.forecastData.weather.wind_speed_10m && this.forecastData.weather.wind_speed_10m[idx]) ?? 12;
                 let baseDir = (this.forecastData.weather.wind_direction_10m && this.forecastData.weather.wind_direction_10m[idx]) ?? 212;
-                let currentSpd = (this.forecastData.marine && this.forecastData.marine.ocean_current_velocity && this.forecastData.marine.ocean_current_velocity[idx]) ?? 0.6;
+                // km/h -> knots. Open-Meteo Marine reports ocean_current_velocity in
+                // km/h, and every consumer past this point is in knots -- including the
+                // proactive-reroute check, which differences this against the live
+                // reading. Leaving the two in different units made that comparison
+                // overstate the gap by 1.852x and trip reroutes that were not warranted.
+                const rawCurrentKmh = this.forecastData.marine && this.forecastData.marine.ocean_current_velocity
+                    ? this.forecastData.marine.ocean_current_velocity[idx]
+                    : undefined;
+                let currentSpd = Number.isFinite(rawCurrentKmh) ? rawCurrentKmh * 0.539957 : 0.6;
                 let currentDir = (this.forecastData.marine && this.forecastData.marine.ocean_current_direction && this.forecastData.marine.ocean_current_direction[idx]) ?? 252;
                 let waveHt = (this.forecastData.marine && this.forecastData.marine.wave_height && this.forecastData.marine.wave_height[idx]) ?? 0.5;
                 let waveDir = (this.forecastData.marine && this.forecastData.marine.wave_direction && this.forecastData.marine.wave_direction[idx]) ?? 219;
@@ -2156,8 +2168,12 @@ import "driver.js/dist/driver.css";
             const wave = getSafeVal('inWave', null);
 
             if (txtLive) {
+                const live = State.liveMetocean || {};
+                const gust = live.gustKts != null ? `, gusting ${live.gustKts}` : '';
+                const period = live.wavePeriodS != null ? ` @ ${live.wavePeriodS}s` : '';
+                const tide = live.tideM != null ? `, tide ${live.tideM >= 0 ? '+' : ''}${live.tideM}m` : '';
                 txtLive.textContent =
-                    `${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E — wind ${wind} kts, waves ${wave} m`;
+                    `${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E — wind ${wind}${gust} kts, waves ${wave} m${period}${tide}`;
             }
             log(`Live metocean refreshed at ${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E.`, 'ai');
         }
@@ -3028,14 +3044,30 @@ function refreshAnalyticsSidebar() {
                 const windDir = Math.round(hw.wind_direction_10m[closestIdx] ?? entry.data.windDir);
                 const waveHt = parseFloat((hm.wave_height[closestIdx] ?? entry.data.waveHt).toFixed(1));
                 const waveDir = Math.round(hm.wave_direction[closestIdx] ?? entry.data.waveDir);
-                const ms = hm.ocean_current_velocity[closestIdx] ?? 0;
-                const currentSpd = parseFloat((ms * 1.94384).toFixed(1));
+                const currentSpd =
+                    currentVelocityToKnots(
+                        hm.ocean_current_velocity?.[closestIdx],
+                        entry.hourly.marineUnits?.ocean_current_velocity,
+                    ) ?? entry.data.currentSpd;
                 const currentDir = Math.round(hm.ocean_current_direction[closestIdx] ?? entry.data.currentDir);
+
+                // Optional chaining throughout: an entry cached by an older build of
+                // this file has no gust/period/tide arrays, and reading [idx] off
+                // undefined would throw inside the offline path -- the one path that
+                // exists precisely because the network is already gone.
+                const gustRaw = hw.wind_gusts_10m?.[closestIdx];
+                const periodRaw = hm.wave_period?.[closestIdx];
+                const tideRaw = hm.sea_level_height_msl?.[closestIdx];
 
                 return {
                     ...entry,
                     data: {
-                        windSpd, windDir, waveHt, waveDir, currentSpd, currentDir, isLive: false, isForecast: true
+                        windSpd, windDir, waveHt, waveDir, currentSpd, currentDir,
+                        gustKts: Number.isFinite(gustRaw) ? parseFloat(gustRaw.toFixed(1)) : null,
+                        wavePeriodS: Number.isFinite(periodRaw) ? parseFloat(periodRaw.toFixed(1)) : null,
+                        tideM: Number.isFinite(tideRaw) ? parseFloat(tideRaw.toFixed(2)) : null,
+                        tidePhase: tidePhaseFromSeries(hm.time, hm.sea_level_height_msl),
+                        isLive: false, isForecast: true
                     }
                 };
             },
@@ -3057,7 +3089,36 @@ function refreshAnalyticsSidebar() {
             }
         };
 
-        // Physically accurate 12.42-hour M2 semi-diurnal tidal cycle equation
+        // Open-Meteo Marine reports ocean_current_velocity in km/h by default, NOT
+        // m/s. This was previously read as m/s and multiplied by 1.94384, which
+        // overstated every current reading by a factor of 3.6 (1.94384 / 0.539957)
+        // -- a 1.1 km/h drift rendered as 2.1 kts instead of 0.6 kts, and fed that
+        // error straight into set-and-drift, crab angle, SOG and fuel burn.
+        //
+        // The unit is read back off the response rather than assumed, so if
+        // Open-Meteo ever changes the default the conversion follows it instead of
+        // silently breaking again.
+        function currentVelocityToKnots(value, unitLabel) {
+            if (value == null || !Number.isFinite(value)) return null;
+            switch ((unitLabel || 'km/h').trim().toLowerCase()) {
+                case 'kn':
+                case 'kts':
+                case 'knots':   return parseFloat(value.toFixed(1));
+                case 'm/s':
+                case 'ms':      return parseFloat((value * 1.94384).toFixed(1));
+                case 'mph':     return parseFloat((value * 0.868976).toFixed(1));
+                case 'km/h':
+                case 'kmh':
+                default:        return parseFloat((value * 0.539957).toFixed(1));
+            }
+        }
+
+        // Fallback tide only -- a generic M2/S2 sine pair, NOT harmonic constants for
+        // this port. The phase offset below is a position-dependent fudge, not a
+        // surveyed one, so it produces a plausible rhythm rather than a real water
+        // level. It is used when Open-Meteo's measured `sea_level_height_msl` is
+        // unavailable; whenever that value IS present it wins, and the UI says which
+        // of the two is on screen (see tideSource in computePhysicsState).
         function computeTideLevel(lat, lng, timestampMs) {
             const timeSec = (timestampMs || Date.now()) / 1000;
             const m2Period = 44712; // 12.42h principal lunar semi-diurnal constituent
@@ -3078,21 +3139,112 @@ function refreshAnalyticsSidebar() {
             return { heightM: tideHeightMeters, phaseText };
         }
 
+        // Flood/ebb from measured sea level.
+        //
+        // Open-Meteo returns an instantaneous height, not a phase, so the direction has
+        // to come from watching the value move. Samples are only accepted a few minutes
+        // apart -- the metocean cache has a 5 minute TTL, so faster polling just re-reads
+        // the same number, and differencing two identical readings would report slack
+        // water forever. Until a second distinct sample lands the phase says so rather
+        // than guessing one.
+        const TideTrend = {
+            lastM: null,
+            lastAt: 0,
+            phase: 'Measuring…',
+            minGapMs: 3 * 60 * 1000,
+
+            update(heightM) {
+                const now = Date.now();
+                if (this.lastM == null) {
+                    this.lastM = heightM;
+                    this.lastAt = now;
+                    return this.phase;
+                }
+                const elapsed = now - this.lastAt;
+                if (elapsed < this.minGapMs) return this.phase;
+
+                const metresPerHour = ((heightM - this.lastM) / elapsed) * 3600000;
+                this.lastM = heightM;
+                this.lastAt = now;
+
+                if (metresPerHour > 0.05) this.phase = 'Flood (Rising)';
+                else if (metresPerHour < -0.05) this.phase = 'Ebb (Falling)';
+                else this.phase = heightM >= 0 ? 'High Water (HW)' : 'Low Water (LW)';
+                return this.phase;
+            }
+        };
+
+        function tidePhaseFromTrend(heightM) {
+            return TideTrend.update(heightM);
+        }
+
+        // Preferred over TideTrend: read flood/ebb straight off the hourly sea-level
+        // series instead of waiting to watch the value move.
+        //
+        // TideTrend needs two samples minutes apart, so on a cold page it reports
+        // "Measuring…" for the first few minutes -- which is most of a pitch. The
+        // forecast we already fetched contains the hours either side of now, so the
+        // slope is available immediately and is a better estimate anyway: it is
+        // centred on the present hour rather than differencing two noisy reads.
+        function tidePhaseFromSeries(timesUnix, levels) {
+            if (!Array.isArray(timesUnix) || !Array.isArray(levels) || timesUnix.length < 3) return null;
+            const nowUnix = Math.floor(Date.now() / 1000);
+
+            let idx = -1, best = Infinity;
+            for (let i = 0; i < timesUnix.length; i++) {
+                const diff = Math.abs(timesUnix[i] - nowUnix);
+                if (diff < best) { best = diff; idx = i; }
+            }
+            if (idx <= 0 || idx >= levels.length - 1) return null;
+
+            const prev = levels[idx - 1], next = levels[idx + 1], here = levels[idx];
+            if (![prev, next, here].every(Number.isFinite)) return null;
+
+            // Centred difference over the two surrounding hours.
+            const metresPerHour = (next - prev) / 2;
+            if (metresPerHour > 0.05) return 'Flood (Rising)';
+            if (metresPerHour < -0.05) return 'Ebb (Falling)';
+            // Turning: near-zero slope is slack, and the sign of the curvature says
+            // which slack it is -- a crest is high water, a trough is low water.
+            return (here - prev) + (here - next) >= 0 ? 'High Water (HW)' : 'Low Water (LW)';
+        }
+
         // Real-time micro-turbulence, gust spectrum, and wave groupiness overlay
-        function computeMicroTurbulence(baseWindSpd, baseWindDir, baseWaveHt, baseWaveDir, baseCurrentSpd, baseCurrentDir) {
+        function computeMicroTurbulence(baseWindSpd, baseWindDir, baseWaveHt, baseWaveDir, baseCurrentSpd, baseCurrentDir, measuredGustKts = null) {
             const nowSec = performance.now() / 1000;
-            
+
             // Multi-frequency wind gust spectrum
-            const gustFactor = 1.0 
-                + 0.18 * Math.sin(nowSec * 0.78) 
-                + 0.12 * Math.cos(nowSec * 0.33) 
+            const gustFactor = 1.0
+                + 0.18 * Math.sin(nowSec * 0.78)
+                + 0.12 * Math.cos(nowSec * 0.33)
                 + 0.08 * Math.sin(nowSec * 0.14);
-            
+
             const windDirWander = 5.0 * Math.sin(nowSec * 0.25) + 3.0 * Math.cos(nowSec * 0.55);
-            
-            const liveWindSpd = Math.max(0, parseFloat((baseWindSpd * gustFactor).toFixed(1)));
+
+            // Peak gust: measured when Open-Meteo gave us one, synthetic otherwise.
+            //
+            // The synthetic figure is a flat `mean x 1.35`, and that understates a real
+            // sea breeze badly -- measured at the demo position, a 13.1 kt mean carried
+            // 27.2 kt gusts, a factor of 2.08. Gust rather than mean is what actually
+            // limits a 17.5 m passenger boat, so the invented number was the optimistic
+            // one in exactly the place a captain cannot afford optimism.
+            const gustIsMeasured = Number.isFinite(measuredGustKts) && measuredGustKts > 0;
+            const peakGustSpd = gustIsMeasured
+                ? parseFloat(measuredGustKts.toFixed(1))
+                : parseFloat((baseWindSpd * 1.35 + 2.0 * Math.sin(nowSec * 0.85)).toFixed(1));
+
+            // With a measured gust the instantaneous wind is interpolated between the
+            // mean and that gust by the same multi-frequency envelope, so the needle
+            // still breathes but its ceiling is a real reading rather than a guess.
+            let liveWindSpd;
+            if (gustIsMeasured && peakGustSpd > baseWindSpd) {
+                const envelope = Math.min(1, Math.max(0, (gustFactor - 1.0) / 0.38 * 0.5 + 0.5));
+                liveWindSpd = parseFloat((baseWindSpd + (peakGustSpd - baseWindSpd) * envelope).toFixed(1));
+            } else {
+                liveWindSpd = Math.max(0, parseFloat((baseWindSpd * gustFactor).toFixed(1)));
+            }
+
             const liveWindDir = Math.round((baseWindDir + windDirWander + 360) % 360);
-            const peakGustSpd = parseFloat((baseWindSpd * 1.35 + 2.0 * Math.sin(nowSec * 0.85)).toFixed(1));
 
             // Wave groupiness envelope (sets every 35-45s)
             const waveEnvelope = 1.0 + 0.20 * Math.sin(nowSec * 0.18) * Math.cos(nowSec * 0.06);
@@ -3107,6 +3259,7 @@ function refreshAnalyticsSidebar() {
                 windSpd: liveWindSpd,
                 windDir: liveWindDir,
                 peakGustSpd: peakGustSpd,
+                gustIsMeasured,
                 waveHt: liveWaveHt,
                 maxWaveInGroup: maxWaveInGroup,
                 currentSpd: liveCurrentSpd,
@@ -3173,9 +3326,17 @@ function refreshAnalyticsSidebar() {
 
             isFetchingApi = true;
             try {
-                // Request current and 3 days of hourly forecast for offline prediction
-                const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&current=wind_speed_10m,wind_direction_10m&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn&timeformat=unixtime&forecast_days=3`;
-                const marineUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&current=wave_height,wave_direction,ocean_current_velocity,ocean_current_direction&hourly=wave_height,wave_direction,ocean_current_velocity,ocean_current_direction&timeformat=unixtime&forecast_days=3`;
+                // Request current and 3 days of hourly forecast for offline prediction.
+                //
+                // The same variable list is asked for in `current` and `hourly`, so the
+                // offline predictor in MarineDataCache.extractForecastForNow can rebuild
+                // exactly the reading this function returns. Adding a variable to one
+                // list and not the other is how the two drift apart.
+                const WEATHER_VARS = 'wind_speed_10m,wind_direction_10m,wind_gusts_10m';
+                const MARINE_VARS = 'wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction,sea_level_height_msl';
+
+                const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&current=${WEATHER_VARS}&hourly=${WEATHER_VARS}&wind_speed_unit=kn&timeformat=unixtime&forecast_days=3`;
+                const marineUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&current=${MARINE_VARS}&hourly=${MARINE_VARS}&timeformat=unixtime&forecast_days=3`;
 
                 let weatherRes = null, marineRes = null;
                 
@@ -3197,24 +3358,48 @@ function refreshAnalyticsSidebar() {
                 }
 
                 let windSpd = 12, windDir = 212, currentSpd = 0.6, currentDir = 252, waveHt = 0.5, waveDir = 219;
+                // Null, not a stand-in number. These four are new readings and the
+                // console has a defined behaviour for "not measured" -- gusts fall back
+                // to the synthetic spectrum, tide falls back to the harmonic model, and
+                // period simply is not shown. An invented default here would be
+                // indistinguishable from a real calm reading.
+                let gustKts = null, wavePeriodS = null, tideM = null;
                 let isLive = false;
 
                 if (weatherRes && weatherRes.current) {
                     windSpd = Math.round(weatherRes.current.wind_speed_10m ?? 12);
                     windDir = Math.round(weatherRes.current.wind_direction_10m ?? 212);
+                    // Already knots: the request carries wind_speed_unit=kn, which
+                    // Open-Meteo applies to gusts as well as to the mean wind.
+                    if (Number.isFinite(weatherRes.current.wind_gusts_10m)) {
+                        gustKts = parseFloat(weatherRes.current.wind_gusts_10m.toFixed(1));
+                    }
                     isLive = true;
                 }
 
                 if (marineRes && marineRes.current) {
                     waveHt = parseFloat((marineRes.current.wave_height ?? 0.5).toFixed(1));
                     waveDir = Math.round(marineRes.current.wave_direction ?? 219);
-                    const ms = marineRes.current.ocean_current_velocity ?? 0.3;
-                    currentSpd = parseFloat((ms * 1.94384).toFixed(1));
+                    const rawCurrent = marineRes.current.ocean_current_velocity;
+                    const unit = marineRes.current_units?.ocean_current_velocity;
+                    currentSpd = currentVelocityToKnots(rawCurrent, unit) ?? 0.6;
                     currentDir = Math.round(marineRes.current.ocean_current_direction ?? 252);
+                    if (Number.isFinite(marineRes.current.wave_period)) {
+                        wavePeriodS = parseFloat(marineRes.current.wave_period.toFixed(1));
+                    }
+                    if (Number.isFinite(marineRes.current.sea_level_height_msl)) {
+                        tideM = parseFloat(marineRes.current.sea_level_height_msl.toFixed(2));
+                    }
                     isLive = true;
                 }
 
-                const liveData = { windSpd, windDir, currentSpd, currentDir, waveHt, waveDir, isLive };
+                // Phase is read off the hourly series at fetch time, while both arrays
+                // are in hand, and travels with the reading from here on.
+                const tidePhase = tideM != null && marineRes?.hourly
+                    ? tidePhaseFromSeries(marineRes.hourly.time, marineRes.hourly.sea_level_height_msl)
+                    : null;
+
+                const liveData = { windSpd, windDir, currentSpd, currentDir, waveHt, waveDir, gustKts, wavePeriodS, tideM, tidePhase, isLive };
 
                 if (!isLive) {
                     // Neither endpoint answered, so every value above is the
@@ -3232,12 +3417,18 @@ function refreshAnalyticsSidebar() {
 
                 const hourlyData = {
                     weather: weatherRes ? weatherRes.hourly : null,
-                    marine: marineRes ? marineRes.hourly : null
+                    marine: marineRes ? marineRes.hourly : null,
+                    // Carried so the offline predictor converts current velocity with
+                    // the same unit the live path used, instead of assuming one.
+                    marineUnits: marineRes ? marineRes.hourly_units : null
                 };
 
                 const entry = MarineDataCache.set(lat, lng, liveData, hourlyData);
                 updateApiUiStatus('live', entry.gridLat, entry.gridLng, entry.timestamp);
-                log(`Open-Meteo REST API Synced: Spatial Grid [${entry.gridLat}°N, ${entry.gridLng}°E] - Wind: ${windSpd}kts, Waves: ${waveHt}m`, "ai");
+                const gustNote = gustKts != null ? `, Gusts: ${gustKts}kts` : '';
+                const periodNote = wavePeriodS != null ? ` @ ${wavePeriodS}s` : '';
+                const tideNote = tideM != null ? `, Tide: ${tideM >= 0 ? '+' : ''}${tideM}m` : '';
+                log(`Open-Meteo REST API Synced: Spatial Grid [${entry.gridLat}°N, ${entry.gridLng}°E] - Wind: ${windSpd}kts${gustNote}, Waves: ${waveHt}m${periodNote}${tideNote}`, "ai");
                 return liveData;
             } catch (err) {
                 console.warn("API Error:", err);
@@ -3575,11 +3766,22 @@ function refreshAnalyticsSidebar() {
                 setSafeVal('inWaveDir', liveData.waveDir);
                 updateDisplayValue('valWaveDir', liveData.waveDir + '°');
 
-                setSafeVal('inTide', liveData.tide);
-                updateDisplayValue('valTide', (liveData.tide >= 0 ? '+' : '') + liveData.tide + 'm');
+                // Tide is written ONLY when Open-Meteo actually returned a sea level.
+                //
+                // This used to read `liveData.tide`, a property fetchLiveMarineData has
+                // never set, so every pass set the range input to `undefined` (which
+                // snaps a range control to its default) and printed the literal string
+                // "undefinedm" to the readout. calculatePhysics happened to overwrite
+                // both a few lines below, which is the only reason it was not visible.
+                if (liveData.tideM != null) {
+                    setSafeVal('inTide', liveData.tideM.toFixed(1));
+                    updateDisplayValue('valTide', `${liveData.tideM >= 0 ? '+' : ''}${liveData.tideM.toFixed(2)}m`);
+                }
 
-                updateDisplayValue('outPointWind', `${liveData.windSpd} kts @ ${liveData.windDir}°`);
-                updateDisplayValue('outPointCurr', `${liveData.currentSpd} kts @ ${liveData.currentDir}°`);
+                // The measured extras have no slider of their own -- they are readings,
+                // not things an operator sets. Stashed here so computePhysicsState can
+                // prefer them over the synthetic gust spectrum and harmonic tide.
+                State.liveMetocean = liveData;
 
                 if (State.isRunning && NavEngine.forecastData) {
                     const totalEta = 12; // Base ETA for condition check
@@ -3800,11 +4002,25 @@ function refreshAnalyticsSidebar() {
                 }
             }
 
-            // Compute 12.42h semi-diurnal astronomical tide level & phase
-            const tide = computeTideLevel(shipLat, shipLng, Date.now());
+            // Tide: measured sea level when Open-Meteo supplied one, harmonic model
+            // otherwise. `tideSource` travels with the number so the panel can say
+            // which of the two it is showing rather than presenting both as equal.
+            const live = State.liveMetocean || null;
+            let tide;
+            if (live && live.tideM != null) {
+                tide = {
+                    heightM: live.tideM,
+                    // Series slope when the forecast gave us one, otherwise fall back to
+                    // watching the value move.
+                    phaseText: live.tidePhase || tidePhaseFromTrend(live.tideM),
+                    source: 'measured'
+                };
+            } else {
+                tide = { ...computeTideLevel(shipLat, shipLng, Date.now()), source: 'model' };
+            }
 
             // Compute real-time micro-turbulence & wind gust overlay
-            const micro = computeMicroTurbulence(baseWindSpd, baseWindDir, baseWaveHt, baseWaveDir, baseCurrentSpd, baseCurrentDir);
+            const micro = computeMicroTurbulence(baseWindSpd, baseWindDir, baseWaveHt, baseWaveDir, baseCurrentSpd, baseCurrentDir, live ? live.gustKts : null);
 
             const windSpd = micro.windSpd;
             const windDir = micro.windDir;
@@ -3998,6 +4214,27 @@ function refreshAnalyticsSidebar() {
                 if (inTideEl && document.activeElement !== inTideEl) inTideEl.value = p.tide.heightM.toFixed(1);
             }
 
+            // Wave period and steepness. Period is only ever a measured value -- there is
+            // no model standing behind it -- so when the feed is down these read '--'
+            // rather than falling back to something invented.
+            const periodS = State.liveMetocean ? State.liveMetocean.wavePeriodS : null;
+            if (periodS != null && periodS > 0) {
+                updateDisplayValue('outWavePeriod', `${periodS.toFixed(1)} s`);
+                // Deep-water wavelength L = 1.56 T^2, so steepness H/L = H / (1.56 T^2).
+                // Height alone does not describe a ride: 2 m at 12 s is a long swell a
+                // 17.5 m boat rides over, 2 m at 5 s is a short sea it slams into.
+                const steepness = p.waveHt / (1.56 * periodS * periodS);
+                let seaText;
+                if (steepness < 0.020) seaText = 'Long swell';
+                else if (steepness < 0.040) seaText = 'Moderate';
+                else if (steepness < 0.067) seaText = 'Short & steep';
+                else seaText = 'Very steep — slamming';
+                updateDisplayValue('outSeaState', `${seaText} (${steepness.toFixed(3)})`);
+            } else {
+                updateDisplayValue('outWavePeriod', '--');
+                updateDisplayValue('outSeaState', '--');
+            }
+
             // Vessel Sensors, Hydro & Aero Telemetry: Display active telemetry ONLY when voyage starts (State.isRunning)
             if (State.isRunning) {
                 updateDisplayValue('valFlow', Math.round(p.fuelFlowLh));
@@ -4014,10 +4251,15 @@ function refreshAnalyticsSidebar() {
                 updateDisplayValue('outWindageDrag', `${(p.windForceN / 1000).toFixed(2)} kN`);
 
                 if (p.micro) {
-                    updateDisplayValue('outGustPeak', `${p.micro.peakGustSpd.toFixed(1)} kts`);
+                    // obs = Open-Meteo's measured gust; est = the console's own gust
+                    // spectrum. The two differ by a lot in a sea breeze, so the tag is
+                    // not decoration -- it is the difference between a reading and a guess.
+                    const gustTag = p.micro.gustIsMeasured ? 'obs' : 'est';
+                    updateDisplayValue('outGustPeak', `${p.micro.peakGustSpd.toFixed(1)} kts (${gustTag})`);
                 }
                 if (p.tide) {
-                    updateDisplayValue('outTidePhase', `${p.tide.phaseText}`);
+                    const tideTag = p.tide.source === 'measured' ? 'measured' : 'model';
+                    updateDisplayValue('outTidePhase', `${p.tide.phaseText} · ${tideTag}`);
                 }
                 
                 // Engine AI Telemetry
@@ -4414,7 +4656,12 @@ function refreshAnalyticsSidebar() {
                 updateDisplayValue('outSFOC', State.ship.progress >= 1 ? 'OFF (Voyage Completed)' : 'OFF (Voyage Standby)');
                 updateDisplayValue('outWindageDrag', '--');
                 updateDisplayValue('outGustPeak', '--');
-                
+                // Wave period and steepness are deliberately NOT reset here. They
+                // describe the sea, not the engine, so they stay readable at standby
+                // exactly like wave height and tide do -- and knowing the sea is short
+                // and steep matters most BEFORE anyone casts off. calculatePhysics owns
+                // these two, and blanking them here just fought it.
+
                 updateDisplayValue('telemRpm', '--');
                 updateDisplayValue('telemEgt', '-- °C');
                 updateDisplayValue('telemCooling', '-- °C');
