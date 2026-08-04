@@ -1,0 +1,1206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marine-AI — Team Review &amp; Pitch Readiness</title>
+<style>
+  :root{
+    --bg:#070b10; --panel:#0d141c; --panel-2:#111b25; --line:#1d2b38;
+    --ink:#e8f0f7; --ink-2:#9db0c2; --ink-3:#63798c;
+    --go:#3ddc97; --warn:#ffb547; --stop:#ff5d5d; --info:#5ec8ff; --accent:#ffb547;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media print{
+    :root{--bg:#fff;--panel:#fff;--panel-2:#f6f8fa;--line:#ccd6df;--ink:#0b1218;--ink-2:#3d4d5c;--ink-3:#68798a;}
+    nav.toc{display:none!important}
+    section{break-inside:avoid}
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:var(--sans);font-size:15.5px;line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px 96px}
+
+  header.mast{
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#0b1219 0%,#070b10 100%);
+    padding:44px 0 30px;margin-bottom:34px;
+  }
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);margin:0 0 12px}
+  h1{font-size:clamp(28px,4.4vw,44px);line-height:1.08;letter-spacing:-.02em;margin:0 0 10px;font-weight:650}
+  .sub{color:var(--ink-2);max-width:66ch;margin:0 0 16px}
+  .stamp{display:flex;flex-wrap:wrap;gap:8px 20px;font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-top:20px}
+  .stamp b{color:var(--ink-2);font-weight:500}
+  .tminus{
+    display:inline-flex;align-items:baseline;gap:8px;padding:5px 12px;border-radius:4px;
+    background:rgba(255,93,93,.12);border:1px solid rgba(255,93,93,.35);color:#ffb3b3;
+    font-family:var(--mono);font-size:12px;letter-spacing:.08em;
+  }
+
+  nav.toc{
+    position:sticky;top:0;z-index:20;background:rgba(7,11,16,.93);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);margin:0 0 34px;
+  }
+  nav.toc ol{display:flex;flex-wrap:wrap;gap:2px 4px;list-style:none;margin:0 auto;padding:9px 24px;max-width:1120px}
+  nav.toc a{
+    display:block;padding:4px 9px;border-radius:4px;text-decoration:none;color:var(--ink-3);
+    font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;
+  }
+  nav.toc a:hover{color:var(--ink);background:var(--panel-2)}
+
+  section{margin:0 0 52px;scroll-margin-top:64px}
+  h2{
+    font-size:13px;font-family:var(--mono);letter-spacing:.18em;text-transform:uppercase;
+    color:var(--accent);margin:0 0 6px;font-weight:600;
+  }
+  h2 .num{color:var(--ink-3);margin-right:10px}
+  .lede{font-size:20px;line-height:1.45;letter-spacing:-.01em;margin:0 0 18px;max-width:68ch;font-weight:520}
+  h3{font-size:16px;margin:28px 0 8px;letter-spacing:-.005em}
+  p{margin:0 0 14px;max-width:76ch}
+  a{color:var(--info)}
+  code{font-family:var(--mono);font-size:.87em;background:var(--panel-2);border:1px solid var(--line);border-radius:3px;padding:1px 5px;color:#cfe3f2}
+  pre{
+    font-family:var(--mono);font-size:12.5px;line-height:1.6;background:var(--panel);border:1px solid var(--line);
+    border-left:3px solid var(--accent);border-radius:5px;padding:14px 16px;overflow-x:auto;margin:10px 0 16px;color:#d5e5f2;
+  }
+  pre code{background:none;border:0;padding:0;font-size:inherit}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(172px,1fr));gap:10px;margin:0 0 14px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:13px 15px}
+  .tile .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px}
+  .tile .v{font-size:25px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+  .tile .n{font-size:11.5px;color:var(--ink-3);margin-top:5px;line-height:1.5}
+  .v.go{color:var(--go)} .v.warn{color:var(--warn)} .v.stop{color:var(--stop)} .v.info{color:var(--info)}
+
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:0 0 16px}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-size:13.5px}
+  th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{
+    background:var(--panel-2);font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--ink-3);font-weight:600;white-space:nowrap;
+  }
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:nth-child(even){background:rgba(255,255,255,.014)}
+  td.mono,th.mono{font-family:var(--mono);font-size:12px}
+
+  .pill{
+    display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    padding:2.5px 8px;border-radius:20px;white-space:nowrap;border:1px solid;font-weight:600;
+  }
+  .p-go{color:var(--go);border-color:rgba(61,220,151,.4);background:rgba(61,220,151,.1)}
+  .p-warn{color:var(--warn);border-color:rgba(255,181,71,.4);background:rgba(255,181,71,.1)}
+  .p-stop{color:var(--stop);border-color:rgba(255,93,93,.42);background:rgba(255,93,93,.11)}
+  .p-info{color:var(--info);border-color:rgba(94,200,255,.38);background:rgba(94,200,255,.1)}
+  .p-mute{color:var(--ink-3);border-color:var(--line);background:var(--panel-2)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px 18px;margin:0 0 12px}
+  .card.stop{border-left:3px solid var(--stop)}
+  .card.warn{border-left:3px solid var(--warn)}
+  .card.go{border-left:3px solid var(--go)}
+  .card.info{border-left:3px solid var(--info)}
+  .card h4{margin:0 0 8px;font-size:15.5px;letter-spacing:-.005em;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+  .card h4 .tag{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.1em}
+  .card p{margin:0 0 9px;font-size:14.5px;color:var(--ink-2)}
+  .card p:last-child{margin-bottom:0}
+  .card strong{color:var(--ink)}
+  .fix{font-size:13.5px;color:var(--ink-2);border-top:1px dashed var(--line);padding-top:9px;margin-top:11px}
+  .fix b{color:var(--go);font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:4px}
+
+  .plain{font-size:13.5px;color:var(--ink-3);border-left:2px solid var(--line);padding-left:11px;margin:8px 0 0}
+  .plain b{color:var(--ink-2);font-weight:600}
+
+  ul,ol{margin:0 0 14px;padding-left:22px;max-width:76ch}
+  li{margin:0 0 8px}
+  .tight li{margin:0 0 4px}
+  hr{border:0;border-top:1px solid var(--line);margin:30px 0}
+  .muted{color:var(--ink-3)}
+  .small{font-size:13.5px}
+  footer{border-top:1px solid var(--line);padding-top:22px;color:var(--ink-3);font-size:12.5px;font-family:var(--mono);line-height:1.7}
+</style>
+</head>
+<body>
+
+<header class="mast">
+  <div class="wrap">
+    <p class="eyebrow">Team SOLMATE · National AI Hackathon 2026 · Blue Economy / Clean Energy</p>
+    <h1>Marine-AI — Team Review</h1>
+    <p class="sub">
+      Everything the team needs in one page: what we built, what it does, what the AI actually is,
+      what still needs fixing, and what only a person can do before the deadline.
+    </p>
+    <p class="sub small muted">
+      <strong>Written in plain language on purpose.</strong> You don't need to read code to review this.
+      Where a technical word is unavoidable, there is a short explanation right underneath it.
+      Sections 3–6 are the product. Sections 9–10 are the fix list. Sections 11–13 are what you take on
+      stage. Section 14 is what only you can do.
+    </p>
+    <div class="stamp">
+      <span class="tminus">DEADLINE 4 AUG 2026 · 3 DAYS LEFT</span>
+      <span><b>Checked:</b> 1 Aug 2026</span>
+      <span><b>Code version:</b> main @ 1e79a6c</span>
+      <span><b>Unsaved work:</b> 4 files changed, not yet committed</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <ol>
+    <li><a href="#checked">01 · What we checked today</a></li>
+    <li><a href="#gonogo">02 · The three must-haves</a></li>
+    <li><a href="#problems">03 · What it solves</a></li>
+    <li><a href="#features">04 · Everything it does</a></li>
+    <li><a href="#ai">05 · The AI, explained</a></li>
+    <li><a href="#architecture">06 · How it fits together</a></li>
+    <li><a href="#docmap">07 · Our documents</a></li>
+    <li><a href="#built">08 · What's finished</a></li>
+    <li><a href="#drift">09 · Where docs are wrong</a></li>
+    <li><a href="#readme">10 · Ready-made fixes</a></li>
+    <li><a href="#runofshow">11 · Demo script</a></li>
+    <li><a href="#qa">12 · Hard questions</a></li>
+    <li><a href="#numbers">13 · Numbers to memorise</a></li>
+    <li><a href="#needsyou">14 · Only you can do this</a></li>
+  </ol>
+</nav>
+
+<div class="wrap">
+
+<!-- ============================================================ 01 -->
+<section id="checked">
+  <h2><span class="num">01</span>What we checked today</h2>
+  <p class="lede">Six things we actually ran, rather than assumed. These are the claims that are safe to make on stage.</p>
+
+  <div class="tiles">
+    <div class="tile"><div class="k">Automated tests</div><div class="v go">307</div><div class="n">all passed, none failed<br><span class="muted">our written docs still say 174 and 276 — out of date</span></div></div>
+    <div class="tile"><div class="k">Screen app check</div><div class="v go">clean</div><div class="n">no errors found in the display code</div></div>
+    <div class="tile"><div class="k">Working services</div><div class="v info">8</div><div class="n">the display uses every one of them</div></div>
+    <div class="tile"><div class="k">Trained models saved</div><div class="v go">6</div><div class="n">all included in the code, ready to run</div></div>
+    <div class="tile"><div class="k">Public demo link</div><div class="v stop">DOWN</div><div class="n">neither web address in our guide belongs to us — see section 02</div></div>
+    <div class="tile"><div class="k">Claude AI writer</div><div class="v stop">NO CREDIT</div><div class="n">password is correct, but the account has no money on it, so it can't run</div></div>
+  </div>
+
+  <p class="small muted">
+    The eight working services: check-if-alive, throttle advice, route planning, engine health,
+    safety alarms, save-a-voyage, monthly emissions report, and the same report as a downloadable file.
+  </p>
+</section>
+
+<!-- ============================================================ 02 -->
+<section id="gonogo">
+  <h2><span class="num">02</span>The three must-haves</h2>
+  <p class="lede">
+    The competition rules disqualify us if any of these three is missing. All three are still open.
+    Nothing else on this page matters as much.
+  </p>
+
+  <div class="card stop">
+    <h4>1. A working public demo link <span class="pill p-stop">Not online yet</span> <span class="tag">OWNER: TEAM LEAD</span></h4>
+    <p>
+      We tested both web addresses written in our own deployment guide. One of them
+      (<code>marine-ai-api.vercel.app</code>) <strong>does not exist</strong> — we never published it. The other
+      (<code>marine-ai.vercel.app</code>) <strong>opens fine, but it belongs to somebody else</strong>: the page
+      that loads is not our display, and it has been sitting there for about three weeks.
+    </p>
+    <p>
+      Web addresses on Vercel are first-come, first-served worldwide, and someone already took the name
+      "marine-ai". So our guide cannot be followed as written — we need different names.
+    </p>
+    <div class="fix"><b>What happens if we don't fix it</b>
+      A dead or wrong demo link is the exact thing our own guide says gets us disqualified. This is the
+      single biggest risk on the whole page. Pick names that are still free — something like
+      <code>solmate-marine-ai</code> — then update the deployment guide and the README with the real
+      addresses.
+    </div>
+  </div>
+
+  <div class="card stop">
+    <h4>2. A video of the system running <span class="pill p-stop">Not started</span> <span class="tag">OWNER: TEAM LEAD</span></h4>
+    <p>
+      No recording exists anywhere. It is a required submission item, and it can't be made properly until
+      two other things are done first: the demo has to be online, and the Claude AI account needs credit.
+      Without credit, every sentence on screen comes from our backup text instead of the AI — which is
+      honest, but it means the strongest point in our pitch never appears on the video.
+    </p>
+    <p><strong>Do it in this order: buy credit → publish the demo → test it → record.</strong></p>
+    <p class="small muted">A full shot-by-shot script is in section 11.</p>
+  </div>
+
+  <div class="card warn">
+    <h4>3. The pitch deck as an actual slide file <span class="pill p-warn">Written, not built</span> <span class="tag">OWNER: TEAM LEAD</span></h4>
+    <p>
+      <code>docs/DECK.md</code> already contains all 17 slides — the words on each slide, what to say out
+      loud, and which scoring criterion it targets. <strong>The writing is done.</strong> What doesn't exist
+      is the PowerPoint file itself.
+    </p>
+    <p>
+      Two things inside it still need a person: <strong>slide 17 has no team names or roles</strong>, and
+      <strong>four internal notes marked "delete before pitch"</strong> are still sitting in slides 8, 9, 10
+      and 12.
+    </p>
+    <div class="fix"><b>Read those notes before deleting them</b>
+      They are honest reminders to ourselves — for example, slide 10's note warns us not to promise a
+      fuel-saving figure for route planning without testing it live first. That warning still applies. Read
+      each one, act on it, then delete it.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 03 -->
+<section id="problems">
+  <h2><span class="num">03</span>What it solves</h2>
+  <p class="lede">
+    A bolt-on kit for the traditional diesel passenger boats already working in the Philippines. No new boat,
+    no new engine — sensors and a screen added to a boat that is already in service. Three sets of sensors
+    feed three separate AI systems, and all three answers appear on one screen at the helm.
+  </p>
+
+  <div class="tiles">
+    <div class="tile"><div class="k">Boats we could reach</div><div class="v">~5,000+</div><div class="n">wooden and fiberglass diesel passenger boats running between PH islands</div></div>
+    <div class="tile"><div class="k">How it installs</div><div class="v info">Bolt-on</div><div class="n">fits boats already in the water — no new hulls needed</div></div>
+    <div class="tile"><div class="k">Who decides</div><div class="v go">The captain</div><div class="n">the system only advises; it never steers or controls the boat</div></div>
+    <div class="tile"><div class="k">Who it serves</div><div class="v">3 groups</div><div class="n">captain (screen) · owner (savings report) · government &amp; lenders (exported evidence)</div></div>
+  </div>
+
+  <div class="card go">
+    <h4>Problem 1 — Fuel is the biggest cost a boat owner can control, and captains guess the throttle <span class="pill p-go">Working</span></h4>
+    <p>
+      <strong>What we do:</strong> work out the cheapest engine speed that <em>still gets you there on time</em>.
+      The system holds the promised arrival time fixed and tries every throttle setting to find the one that
+      burns least fuel while still arriving on schedule. It never simply tells you to go slower.
+    </p>
+    <p>
+      <strong>The product is the saving, not the number.</strong> Not "run at 1650 RPM" but
+      "1650 RPM saves you 2.1 litres per hour."
+    </p>
+    <p class="plain"><b>RPM</b> = engine revolutions per minute, the number on the boat's rev counter. It's the
+    unit a captain actually controls with the throttle lever.</p>
+  </div>
+
+  <div class="card go">
+    <h4>Problem 1b — The same fuel question, but about which path to take <span class="pill p-go">Working</span></h4>
+    <p>
+      <strong>What we do:</strong> draw several possible paths between the two ports — the straight one, plus
+      versions that swing wider to each side. Each path is chopped into short segments, the expected weather
+      is looked up for each segment, and the fuel cost of every segment is worked out using the <em>same</em>
+      calculation as the throttle advice above.
+    </p>
+    <p>
+      Two things can reject a path outright rather than just making it expensive: <strong>water that is too
+      shallow</strong> (a shortcut over a sandbank is thrown away, not costed) and <strong>waves that are too
+      big</strong>.
+    </p>
+    <p>
+      <strong>Why this matters for the pitch:</strong> there is only <em>one</em> fuel calculation in the whole
+      system. Route planning and throttle advice agree with each other to six decimal places, and we have an
+      automated test that fails if they ever stop agreeing. A judge cannot find two numbers in our system that
+      contradict each other, because there is only one place they come from.
+    </p>
+  </div>
+
+  <div class="card go">
+    <h4>Problem 2 — Breakdowns get discovered at sea instead of being planned at the dock <span class="pill p-go">Stage 1 working</span></h4>
+    <p>
+      <strong>What we do:</strong> learn what "normal" looks like for that particular engine across seven
+      sensors, then flag anything that drifts away from it. Importantly, it also catches problems where every
+      single sensor still looks fine on its own, but the <em>combination</em> is one a healthy engine never
+      produces.
+    </p>
+    <p>
+      <strong>We are honest about what it can't do yet, and the code enforces it.</strong> In its first
+      ~24 months the system can say <em>which sensor is drifting</em> — "coolant temperature is rising" — but
+      it physically cannot name a broken part or predict a repair date. If any part of the program tries to
+      output that, the data rules reject it and the request fails. Naming a part needs a history of real
+      breakdowns to learn from, which a newly installed unit simply doesn't have yet.
+    </p>
+  </div>
+
+  <div class="card go">
+    <h4>Problem 3 — Without emissions proof, operators are locked out of green financing <span class="pill p-go">Working</span></h4>
+    <p>
+      <strong>What we do:</strong> produce a monthly report of carbon dioxide avoided, downloadable as a
+      spreadsheet file — evidence an operator can email to the local government, to MARINA, or to a lender.
+      It needs <strong>no extra sensors at all</strong> beyond what Problems 1 and 2 already use.
+    </p>
+    <p>
+      <strong>The report refuses to flatter us.</strong> CO₂ isn't predicted, it's basic chemistry:
+      2.68 kg of CO₂ per litre of diesel burned. The honest part is the comparison — we measure each trip
+      against <em>that same boat's own past trips on that same route</em>, not against some fleet average.
+      A trip with no past record still counts its fuel and its CO₂ in the totals, but contributes nothing to
+      the "avoided" figure, and the report says how many trips that was. A month that burned <em>more</em>
+      than before is reported as a negative number, not rounded up to zero.
+    </p>
+  </div>
+
+  <div class="card info">
+    <h4>Running through all of it — the line the AI is not allowed to cross <span class="pill p-go">Working</span></h4>
+    <p>
+      Emergency alarms — engine too hot, oil pressure too low, battery failing — are <strong>simple fixed
+      rules, completely separate from any AI</strong>. That part of the program loads no AI model at all, and
+      we have a test that fails if anyone ever adds one. Give it the same sensor reading and it gives the same
+      answer, every time, forever.
+    </p>
+    <p>
+      This is three things at once: an ethical safeguard, a legal requirement under maritime liability law,
+      and simply the right engineering choice when a wrong answer could hurt someone.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================ 04 -->
+<section id="features">
+  <h2><span class="num">04</span>Everything it does</h2>
+  <p class="lede">The full list of what works today. Use this to check the demo script covers the good parts.</p>
+
+  <h3>4.1 — The eight things the system can be asked</h3>
+  <p class="small muted">
+    The screen is one program and the calculations are another; the screen asks the calculation program
+    questions over the internet. These are the eight questions it can ask.
+  </p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>The question</th><th>The answer it gives</th><th>Worth knowing</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Are you alive?</strong><br><span class="mono small muted">/health</span></td><td>Yes/no, plus whether the trained fuel model loaded and which sentence-writer is active</td><td>Warning: this <em>cannot</em> tell you whether the Claude AI actually works — see the fix in our deploy guide</td></tr>
+      <tr><td><strong>What throttle should I use?</strong><br><span class="mono small muted">/advise</span></td><td>Recommended RPM and the saving, a breakdown of where the engine power goes, engine wear, CO₂, and the full fuel-vs-speed curve</td><td>It sends the whole curve so the screen can animate smoothly using <em>real</em> model output instead of making numbers up between questions</td></tr>
+      <tr><td><strong>Which way should I go?</strong><br><span class="mono small muted">/route</span></td><td>Waypoints, expected fuel, honest comparison against the straight path, shallow-water and weather warnings, and the realistic crossing time</td><td>Throws away paths crossing water that is too shallow rather than just marking them expensive</td></tr>
+      <tr><td><strong>Is my engine okay?</strong><br><span class="mono small muted">/maintenance</span></td><td>A health score, which sensors are drifting ranked worst-first, how hard the engine has been worked, and a plain-language sentence</td><td>The data rules block it from naming a broken part or a repair date during the first stage</td></tr>
+      <tr><td><strong>Is anything dangerous right now?</strong><br><span class="mono small muted">/safety</span></td><td>Pass/fail for each of five emergency rules, and the exact limit that was crossed</td><td>Uses no AI whatsoever. A sensor that isn't reporting is marked "not checked" — never assumed safe</td></tr>
+      <tr><td><strong>Save this completed trip</strong><br><span class="mono small muted">/voyages</span></td><td>Stores one crossing</td><td>Sending the same trip twice replaces it instead of adding it again, so a dropped connection can't inflate the fuel totals</td></tr>
+      <tr><td><strong>Monthly emissions report</strong><br><span class="mono small muted">/emissions/report</span></td><td>Fuel used, CO₂ produced, CO₂ avoided, how the comparison was made, and any caveats</td><td>Says out loud when it's running somewhere that can't save data permanently</td></tr>
+      <tr><td><strong>…as a downloadable file</strong><br><span class="mono small muted">/emissions/report.csv</span></td><td>The same report as a spreadsheet</td><td>Deliberately a download link, because "evidence you can send to the government" has to mean an actual file</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>4.2 — The screen at the helm</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Feature</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Five camera views</strong></td><td>Three map views (north always up / your direction up / follow the boat) plus two outside views: <strong>helm</strong> looks forward as if standing at the wheel, and <strong>chase</strong> follows from behind with the boat in shot.</td></tr>
+      <tr><td><strong>A drawn, moving sea</strong></td><td>Lit waves, sun glitter on the water, whitecaps, haze in the distance, cloud, and dawn/dusk colours, with a drawn banca foredeck and outrigger poles. The distant shoreline is traced from a <strong>real satellite photo</strong> of the Iloilo Strait, so the coast under the boat and the coast on the horizon come from one source and can never disagree.</td></tr>
+      <tr><td><strong>The sun is in the right place</strong></td><td>We calculate the real sun position for that date, hour and latitude, so the lighting is correct rather than decorative. There is a time-of-day slider, and the demo opens at <strong>05:40</strong> — the first crossing of the day.</td></tr>
+      <tr><td><strong>Three live panels</strong></td><td>Throttle (biggest), Route, and Health — each fed by its own question and each <strong>showing its own age separately</strong>. A route planned at the dock is minutes old; the throttle advice is seconds old. One shared "last updated" would make a stale throttle number look as fresh as a new one.</td></tr>
+      <tr><td><strong>Wind &amp; sea dial</strong></td><td>Wind and wave direction shown relative to the bow on one dial, on two <em>separate rings</em> — because wind-driven waves usually run the same way as the wind, so on a single ring one arrow would hide behind the other most of the time.</td></tr>
+      <tr><td><strong>Editable boat</strong></td><td>Three ready-made boats (our demo boat, a traditional banca, a fastcraft) plus every measurement editable by hand, with warnings if the numbers stop making physical sense. Both throttle advice and route planning read the same boat.</td></tr>
+      <tr><td><strong>Five weather settings</strong></td><td>Clear, <em>amihan</em> (northeast monsoon), <em>habagat</em> (southwest monsoon), low-pressure area, and typhoon — each scaling a weather map that includes shelter near the shore, faster current mid-channel, and local disturbance around any storm you place.</td></tr>
+      <tr><td><strong>Real live weather</strong></td><td>Pulls today's actual wind, wave and current readings as the starting point the weather map adjusts. If one source is down the other still helps; if both are down the boat keeps showing its last known conditions, because losing signal at sea is normal, not an error.</td></tr>
+      <tr><td><strong>Fault injector</strong></td><td>Four faults you can trigger for the demo, at any severity: coolant creeping up, oil pressure sagging, vibration rising, and a charging failure.</td></tr>
+      <tr><td><strong>Permanent trust bar</strong></td><td>Shows how fresh the data is, whether we're connected, and the words <code>ADVISORY ONLY — CAPTAIN COMMANDS</code>. That line is a legal and ethical requirement and cannot be dismissed or hidden.</td></tr>
+      <tr><td><strong>Filipino is not an afterthought</strong></td><td>Every sentence is produced in English and Filipino together and checked together. There is a test protecting the grammar after a bug once produced a sentence with two "ang" markers in it.</td></tr>
+      <tr><td><strong>Export this month</strong></td><td>A plain download button for the monthly emissions spreadsheet.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>4.3 — The fake sensors (there is no hardware, and we say so)</h3>
+  <p class="small">
+    Since we have no physical boat, a program pretends to be the engine's sensor wiring. Its idea of "healthy"
+    deliberately matches the health-checking system's idea of healthy — <em>including how each reading rises
+    with engine load</em>. If we faked each sensor independently, every frame would look abnormal and the demo
+    would alarm constantly on a perfectly healthy engine. The seven sensors and their healthy readings:
+  </p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Sensor</th><th class="mono">Healthy</th><th>Sensor</th><th class="mono">Healthy</th></tr></thead>
+    <tbody>
+      <tr><td>Coolant temperature</td><td class="mono">82 °C</td><td>Oil particle count</td><td class="mono">15 ppm</td></tr>
+      <tr><td>Oil pressure</td><td class="mono">350 kPa</td><td>Exhaust NOx</td><td class="mono">600 ppm</td></tr>
+      <tr><td>Battery voltage</td><td class="mono">13.8 V</td><td>Vibration</td><td class="mono">0.05 g</td></tr>
+      <tr><td>Exhaust temperature</td><td class="mono">380 °C</td><td class="muted">—</td><td class="muted">—</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>4.4 — The five emergency alarms</h3>
+  <p class="small">
+    Fixed limits anyone can check against an engine manual. Three of them only apply once the engine is
+    actually running (above 400 RPM) — otherwise every healthy boat would set off two alarms while still tied
+    up at the wharf, and crews would quickly learn to ignore the alarm.
+  </p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Alarm</th><th class="mono">Triggers at</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Engine overheating</td><td class="mono">105 °C or above</td><td>Always checked</td></tr>
+      <tr><td>Oil pressure too low</td><td class="mono">100 kPa or below</td><td>Our original plan said "too high" — that isn't how a diesel's oil system fails. We changed it, wrote down why, and added a test so it can't drift back</td></tr>
+      <tr><td>Battery too low</td><td class="mono">12.0 V or below</td><td>The alternator isn't charging; navigation and radio are running on the battery alone</td></tr>
+      <tr><td>Battery too high</td><td class="mono">15.8 V or above</td><td>A failed regulator, which overcharges the battery and can damage instruments</td></tr>
+      <tr><td>Exhaust too hot</td><td class="mono">580 °C or above</td><td>Only while running</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>4.5 — Quality habits worth mentioning if asked</h3>
+  <ul class="tight small">
+    <li><strong>One definition of every piece of data.</strong> The shapes of all our data are written once, and the screen's version is generated automatically from it — so the two halves can never drift apart.</li>
+    <li><strong>Every sensor reading is checked before use</strong> — is it physically possible, is the timestamp sane, and has the sensor stopped moving? A sensor stuck at one value is treated as just as suspicious as one reading nonsense. Out-of-order and duplicate readings are rejected, not quietly reordered.</li>
+    <li><strong>Every reading is stamped "simulator"</strong> in the data itself, and there is no way for it to accidentally claim otherwise.</li>
+    <li><strong>The published program is deliberately tiny</strong> — 85 MB instead of 358 MB — which is what lets it run cheaply in the cloud. Every part respects that limit; the health checker was hand-written for exactly this reason.</li>
+    <li><strong>307 automated tests</strong>, all passing. They protect the promises, not just the code — for example, one test fails if weather ever stops slowing the boat down.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ 05 -->
+<section id="ai">
+  <h2><span class="num">05</span>The AI, explained</h2>
+  <p class="lede">
+    Four things we trained ourselves, plus Claude for writing sentences — and five important parts we
+    deliberately did <em>not</em> use AI for. That split is our strongest argument: use AI where there is real
+    data to learn from, physics where there is proven theory, and fixed rules where a wrong answer is
+    dangerous.
+  </p>
+
+  <div class="card info">
+    <h4>Five words you'll hear, in plain English</h4>
+    <p class="small" style="margin-bottom:6px"><strong>XGBoost</strong> — a well-known method that learns by
+    building thousands of small yes/no decision trees and combining them. Good at spotting patterns in tables
+    of numbers.</p>
+    <p class="small" style="margin-bottom:6px"><strong>ONNX</strong> — a small, portable file format for a
+    finished trained model. It lets us run the model without installing the big, heavy training software.</p>
+    <p class="small" style="margin-bottom:6px"><strong>PCA</strong> — a method that learns the normal
+    relationships <em>between</em> several sensors at once, then measures how far a new reading sits from that
+    normal pattern.</p>
+    <p class="small" style="margin-bottom:6px"><strong>Held-out data</strong> — examples deliberately hidden
+    from the model during training, kept back to test it fairly afterwards. Testing on data it already saw
+    would flatter it.</p>
+    <p class="small" style="margin-bottom:0"><strong>Average error</strong> — how far off the model is,
+    typically. Smaller is better.</p>
+  </div>
+
+  <h3>5.1 — What we trained</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>What it does</th><th>Method</th><th>What it learned from</th><th>How good it is</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Predicts extra fuel burned by a worn engine</strong><br><span class="small muted">the learned half of our fuel calculation</span></td>
+        <td><strong>XGBoost</strong> decision trees, saved as a small <strong>ONNX</strong> file (363 kB) included in our code</td>
+        <td>A public navy engine dataset — 9,282 readings covering <strong>1,326 different states of engine wear</strong></td>
+        <td><strong>Off by 0.085%</strong> of fuel burned, tested only on wear levels it had never seen. A straight line manages 0.64%. Having no model at all is off by 5.02% — that gap is the size of the problem we're solving.</td>
+      </tr>
+      <tr>
+        <td><strong>Predicts wind, waves and current along the route</strong></td>
+        <td><strong>XGBoost</strong> for 4 of the 9 things predicted; a simple <strong>historical-average table</strong> for the other 5 — whichever actually won, one at a time</td>
+        <td><strong>2.6 years of real recorded weather</strong> — 196,272 hourly readings across 9 points covering the Iloilo Strait</td>
+        <td>The AI won on wind and wave <em>direction</em>, which follow the monsoon seasons. The plain average table beat it on wind speed, wave height and current — <strong>5 times out of 9</strong>. We shipped the losing scoreboard instead of hiding it.</td>
+      </tr>
+      <tr>
+        <td><strong>Spots an unhealthy engine</strong><br><span class="small muted">the "whole picture" half</span></td>
+        <td><strong>PCA</strong> — learns the normal relationship between all seven sensors together</td>
+        <td>That boat's <em>own</em> healthy history. Nothing borrowed from anyone else</td>
+        <td>Catches faults where every sensor individually looks fine but the combination is impossible for a healthy engine — coolant climbing while engine load stays flat, for example</td>
+      </tr>
+      <tr>
+        <td><strong>Spots an unhealthy engine</strong><br><span class="small muted">the "single sensor" half</span></td>
+        <td>A robust drift check on each sensor separately, designed not to be fooled by occasional odd readings</td>
+        <td>The same per-boat healthy history</td>
+        <td>Catches one sensor wandering off. The two halves are combined, and we can always show exactly how much each sensor contributed to the score — which the screen needs</td>
+      </tr>
+      <tr>
+        <td><strong>Writes the sentence the captain reads</strong></td>
+        <td><strong>Anthropic's Claude</strong>, asked for short output in a fixed format</td>
+        <td>Not trained by us at all. No one else's trained model is included in our code</td>
+        <td>Rewrites a sentence our own software already decided, in English and Filipino — then gets checked before it's shown. See below</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="card go">
+    <h4>The checker is the part worth bragging about <span class="tag">the answer to "what if your AI is wrong?"</span></h4>
+    <p>
+      Every team at this event will have an AI writing text. The question a technical judge will ask is what
+      stops it saying something wrong in public — and "we wrote a careful prompt" is not an answer.
+    </p>
+    <p>
+      Ours: the AI is handed a <strong>finished sentence</strong> and asked only to say it more naturally.
+      What comes back is compared against the original before anyone sees it.
+      <strong>Every number must match exactly</strong> — no rounding, no dropping the peso figure, no inventing
+      a saving. <strong>It is not allowed to give an order</strong> ("reduce your speed" is rejected;
+      "1650 RPM saves 2.1 L/h" is fine). It must fit on the screen. Fail any of those and the whole thing is
+      thrown away — both languages together, because an English sentence sitting next to a Filipino one that
+      says something different is worse than using our plain backup text for both.
+    </p>
+    <p>
+      <strong>And the AI is fenced in from the other direction too.</strong> A test scans the throttle
+      calculator, the route planner, the health checker and the safety alarms, and fails if any of them ever
+      starts using the AI. It sits at the very end of the chain, after every decision has already been made.
+    </p>
+  </div>
+
+  <h3>5.2 — What we deliberately did <em>not</em> use AI for</h3>
+  <p class="small">
+    This half of the table is the stronger half in a technical conversation. Each row is somewhere using AI
+    would have sounded more impressive and been worse.
+  </p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>The part</th><th>What we used instead</th><th>Why not AI</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Working out how much engine power the conditions demand</strong></td>
+        <td>Standard boat-design physics: established formulas for hull drag, plus the extra effort caused by wind, waves, current, and passenger and cargo weight</td>
+        <td><strong>No public dataset exists where wind, current, waves or load actually change</strong> — in every dataset we could find, they are fixed. A model "trained" on that would completely ignore the very things our product reacts to, while confidently claiming to account for them. Every number in our formulas is named, sourced, and can be tuned per boat from that boat's own fuel meter.</td>
+      </tr>
+      <tr>
+        <td><strong>Turning engine power into litres of fuel</strong></td>
+        <td>A published fuel curve for marine diesel engines</td>
+        <td>Our training dataset is a <em>gas turbine</em>, not a diesel. At low power a gas turbine wastes about 7× its best fuel rate; a diesel only about 1.5×. Copying the turbine's curve would have overstated our fuel savings by roughly <strong>five times, in our own favour</strong> — so we don't. A test keeps our diesel curve inside published limits so it can never slide back.</td>
+      </tr>
+      <tr>
+        <td><strong>Emergency alarms</strong></td>
+        <td>Five fixed limits</td>
+        <td>Behaviour in an emergency has to be identical every single time and checkable by a human. It loads no AI, remembers nothing between checks, and a test makes sure it never will.</td>
+      </tr>
+      <tr>
+        <td><strong>Calculating CO₂</strong></td>
+        <td>Chemistry: 2.68 kg of CO₂ per litre burned</td>
+        <td>An "AI emissions model" that just multiplied litres by a fixed number and called it a prediction would be the least defensible thing we could build. The accuracy of the report comes openly from the accuracy of the fuel calculation.</td>
+      </tr>
+      <tr>
+        <td><strong>Distances and bearings on the map</strong></td>
+        <td>Standard navigation maths for distance over a curved Earth</td>
+        <td>These have exact answers. There is nothing to learn.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>5.3 — Decisions we should be ready to defend</h3>
+  <ul class="tight small">
+    <li><strong>We tested the fuel model on whole engine conditions it had never seen</strong>, not on random rows. The dataset covers every combination systematically, so picking random rows to test on would leave almost-identical examples on both sides — any model would score near-perfectly without having learned anything. We held back 332 of 1,326 wear states entirely.</li>
+    <li><strong>We tested the weather model on later dates</strong>, never on random hours. Weather an hour apart is nearly identical, so random testing would effectively let the model peek at the answer.</li>
+    <li><strong>RPM is not used to predict fuel.</strong> In the dataset it barely changes within a power setting — it's just another way of writing down engine load. Including it would add something that looks useful and contributes nothing. We still show RPM and still give advice in RPM, because that's the lever the captain's hand is on.</li>
+    <li><strong>The saved model is checked against the trained one.</strong> Our training program refuses to save the small portable file if its answers differ from the original by more than a hair. The measured difference is about a millionth — ordinary rounding. So the model we ship is provably the one our tests approved.</li>
+    <li><strong>How hard the engine is worked never affects the health score.</strong> A test enforces this. Working an engine hard is normal use, not a fault — if it raised the score, every busy crossing would light up the health warning and the crew would learn to ignore it.</li>
+    <li><strong>Everything degrades instead of breaking.</strong> Missing fuel model → assumes a healthy engine, lowers its confidence, and says so on every answer. Missing weather model → falls back to a simple weather pattern, and says so. Missing AI key → uses our plain backup sentence, and says so. Can't save data → keeps it in memory, and the report says so.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ 06 -->
+<section id="architecture">
+  <h2><span class="num">06</span>How it fits together</h2>
+  <p class="lede">Three sets of sensors, three AI systems, one screen — and four rules about what is allowed to talk to what.</p>
+
+<pre><code>  SENSORS (simulated — declared)        CHECKED           THE THINKING PARTS              WHAT YOU SEE
+  ──────────────────────────────        ───────           ──────────────────              ────────────
+  Rev counter, exhaust probe     ┐                  ┌──&gt; throttle advice   ──────────&gt;  ┐
+  Motion sensor, GPS, fuel meter ├──&gt; validity ─────┼──&gt; route planning    ──────────&gt;  ├──&gt;  ONE
+  Live weather feed              ┘    checks        ├──&gt; engine health     ──────────&gt;  │   SCREEN
+                                      timestamps    ├──&gt; safety alarms     ──────────&gt;  │  AT THE
+                                      stuck sensors └──&gt; emissions report  ──────────&gt;  ┘   HELM
+
+                            ONE FUEL CALCULATION  ── used by throttle, route AND emissions
+                                                  ── a test fails if they ever disagree
+
+                     Claude sentence writer  ── sits at the very end, after every decision.
+                                                Rewords only. Checked, then labelled.</code></pre>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>The rule</th><th>What it means</th><th>How we make sure</th></tr></thead>
+    <tbody>
+      <tr><td><strong>The screen never does maths</strong></td><td>The display draws things; it never works out fuel, power or speed itself</td><td>A second copy of the calculation in the screen's code would drift apart from the real one the moment either was edited. Where a value isn't available yet, the boat is shown <em>stopped</em> rather than moving at an invented speed — which was exactly the flaw in the earlier prototype.</td></tr>
+      <tr><td><strong>Safety alarms use no AI</strong></td><td>The emergency path consults nothing that was trained</td><td>A test reads the alarm code looking for any mention of the AI parts, and fails if it finds one</td></tr>
+      <tr><td><strong>Nothing consults the sentence writer</strong></td><td>The AI is downstream of every decision and no decision may ask it anything</td><td>A test scans the throttle, route, health and safety code for any use of it</td></tr>
+      <tr><td><strong>Stage 1 can't pretend to be stage 2</strong></td><td>An early-stage health report may never name a part or a repair date</td><td>The data rules reject it and the request fails</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="card warn">
+    <h4>Two deliberate duplications — please don't "tidy these up" <span class="pill p-warn">For whoever edits the code next</span></h4>
+    <p>
+      <strong>1. The fake sensors copy the health checker's idea of "healthy".</strong> The same numbers appear
+      in two places, in two different programming languages, with nothing keeping them in sync automatically.
+      Change one and you must change the other, or the demo will start alarming on a perfectly healthy engine.
+    </p>
+    <p>
+      <strong>2. The health warning threshold exists only in one place.</strong> The screen colours the panel
+      using a word sent by the server rather than comparing a number itself — on purpose, so that number isn't
+      duplicated the way the sensor values already are.
+    </p>
+  </div>
+
+  <div class="card info">
+    <h4>What it's built with <span class="tag">for the deck's technology slide</span></h4>
+    <p class="small">
+      <strong>The calculations:</strong> Python · FastAPI · NumPy · XGBoost for training, ONNX for running ·
+      a small local database for saved trips.<br>
+      <strong>The screen:</strong> Next.js 16 · React 19 · TypeScript · Tailwind · drawn on a canvas at about
+      62 frames per second for the outside views and 100–180 for the maps.<br>
+      <strong>Published on:</strong> Vercel — two pieces, the screen and the calculations.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================ 07 -->
+<section id="docmap">
+  <h2><span class="num">07</span>Our documents, and whether they're honest</h2>
+  <p class="lede">The seven documents the README links to — who each one is for, and whether it currently tells the truth.</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Document</th><th>What it's for</th><th>Who reads it</th><th>Is it accurate?</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="mono">Live demo link</td>
+        <td>Can a judge actually use the thing?</td>
+        <td>A judge, in the first 10 seconds</td>
+        <td><span class="pill p-stop">Placeholder</span><br><span class="small muted">Still says "coming soon". Must become a real link.</span></td>
+      </tr>
+      <tr>
+        <td class="mono">PROJECT_OVERVIEW.md</td>
+        <td>Our own reference: scope, tools, how each part works, what's left</td>
+        <td>Us; a curious judge</td>
+        <td><span class="pill p-stop">Out of date</span><br><span class="small muted">Written 23 July. Undersells us by four finished parts — see item 3 in section 09.</span></td>
+      </tr>
+      <tr>
+        <td class="mono">DATA.md</td>
+        <td>Every dataset, its licence, and how far we trust it</td>
+        <td>Data-honesty scoring — 20% of the semi-final</td>
+        <td><span class="pill p-stop">2 contradictions</span><br><span class="small muted">See items 1 and 2 in section 09.</span></td>
+      </tr>
+      <tr>
+        <td class="mono">DEVIATIONS.md</td>
+        <td>Every place the build differs from the plan we submitted, and why</td>
+        <td>Judges in Q&amp;A — our best asset</td>
+        <td><span class="pill p-warn">Mostly current</span><br><span class="small muted">Two small stale lines; see item 6.</span></td>
+      </tr>
+      <tr>
+        <td class="mono">DECK.md</td>
+        <td>All 17 slides, written out with speaker notes</td>
+        <td>Whoever builds the PowerPoint</td>
+        <td><span class="pill p-warn">Ready, needs tidying</span><br><span class="small muted">4 internal notes to remove; team names missing.</span></td>
+      </tr>
+      <tr>
+        <td class="mono">PRODUCT.md</td>
+        <td>Why the screen looks the way it does — the 05:40 captain</td>
+        <td>Defending the design; presentation score</td>
+        <td><span class="pill p-go">Accurate</span><br><span class="small muted">Nothing wrong found. Slide 11 comes straight from it.</span></td>
+      </tr>
+      <tr>
+        <td class="mono">DEPLOY.md</td>
+        <td>Step-by-step guide to publishing the demo</td>
+        <td>Whoever publishes it</td>
+        <td><span class="pill p-stop">Wrong web addresses</span><br><span class="small muted">Both example links are dead or someone else's. See section 02.</span></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="small">
+    <strong>One thing missing:</strong> none of these is a short "read this first" page for a judge with four
+    minutes. Our best material — the honesty list, the fuel-model argument, the AI checker — is spread across
+    three files. Section 10 has a ready-made five-link tour to paste at the top of the README.
+  </p>
+</section>
+
+<!-- ============================================================ 08 -->
+<section id="built">
+  <h2><span class="num">08</span>What's actually finished</h2>
+  <p class="lede">Read from the code itself, not from our status documents. Four things our own docs still call unfinished are working.</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Part</th><th>State</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Throttle advice</td><td><span class="pill p-go">Done</span></td><td>Physics plus trained model, with the search for the cheapest setting. Off by 0.085% of fuel.</td></tr>
+      <tr><td>Route planning</td><td><span class="pill p-go">Done</span></td><td>Paths, depth and wave limits, and it agrees with the throttle advice to six decimal places.</td></tr>
+      <tr><td>Weather prediction along the route</td><td><span class="pill p-go">Done</span></td><td>Trained 30 July on 196,272 real hourly readings. <strong>Our docs still call this unfinished.</strong></td></tr>
+      <tr><td>Engine health, stage 1</td><td><span class="pill p-go">Done</span></td><td>Two methods combined. Stage-2 claims are blocked by the data rules.</td></tr>
+      <tr><td>How hard the engine has been worked</td><td><span class="pill p-warn">Partly</span></td><td>Connected 31 July. Covers only the last minute or two, not the engine's whole life — and we admit that in writing.</td></tr>
+      <tr><td>Emissions report</td><td><span class="pill p-go">Done</span></td><td>Saved trips, monthly report, spreadsheet download, and a button on the screen.</td></tr>
+      <tr><td>Safety alarms</td><td><span class="pill p-go">Done</span></td><td>Five fixed rules with a test proving no AI is involved. <strong>Our overview still says "planned".</strong></td></tr>
+      <tr><td>Claude sentence writer</td><td><span class="pill p-warn">Built, no credit</span></td><td>The checker works. Without account credit it quietly falls back to our plain sentences.</td></tr>
+      <tr><td>The screen</td><td><span class="pill p-go">Done</span></td><td>Five views, sea dial, all eight questions used. <strong>Our overview lists this as still to do.</strong></td></tr>
+      <tr><td>Saving completed trips</td><td><span class="pill p-go">Done</span></td><td><strong>Missing entirely from the README's file list.</strong></td></tr>
+      <tr><td>The fake sensors</td><td><span class="pill p-stop">In the wrong place</span></td><td>The folder our README points at is <strong>empty</strong>. The real code lives with the screen. See item 1 in section 09.</td></tr>
+      <tr><td>Stage 2 health · continuous re-planning · a different data connection · learning from other people's engine data · fitting each boat's own baseline</td><td><span class="pill p-mute">Not built</span></td><td>All five are listed and explained in DEVIATIONS.md. Leave them there — that honest list is worth more than a half-built feature.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============================================================ 09 -->
+<section id="drift">
+  <h2><span class="num">09</span>Where our documents are wrong</h2>
+  <p class="lede">
+    Fourteen places our writing and our code disagree, worst first. The top four damage the honesty we've
+    built the whole pitch on.
+  </p>
+
+  <div class="card stop">
+    <h4>1. Our "no hardware" statement points at an empty folder <span class="pill p-stop">Critical</span></h4>
+    <p>
+      The README says every sensor reading comes from a simulator in a particular folder.
+      <strong>That folder is empty.</strong> Eleven lines further down, the same README lists the folder as
+      "not built yet" — so the file contradicts itself on one page. DATA.md repeats the same claim.
+    </p>
+    <p>
+      This is the hardware declaration the competition requires. It is the first thing a doubting judge
+      checks, and the one paragraph where being wrong looks like hiding something rather than being out of
+      date.
+    </p>
+    <p>
+      A second mistake rides along: DATA.md says the simulator works by replaying the navy dataset. It
+      doesn't — it generates readings from a statistical model that deliberately matches the health checker.
+      That's a <em>better</em> story than replaying data, and it's why opening the throttle raises two sensors
+      together without setting off an alarm. It just isn't the story the document tells.
+    </p>
+    <div class="fix"><b>Fix — 10 minutes, no coding</b>
+      Point both documents at the real files. Ready-made replacement wording is in section 10. Keep the claim
+      about live weather — that part is completely true.
+    </div>
+  </div>
+
+  <div class="card stop">
+    <h4>2. Three documents disagree about a dataset we cite <span class="pill p-stop">Critical</span></h4>
+    <p>
+      DATA.md says a NASA dataset was used to pre-train our health checker. DEVIATIONS.md says the exact
+      opposite in plain words — <em>neither dataset trains it</em> — and warns that the citation must not
+      suggest otherwise. The deck agrees with DEVIATIONS; PROJECT_OVERVIEW agrees with DATA.md.
+    </p>
+    <p>
+      Claiming to have used a dataset we didn't is exactly the kind of thing our honesty list exists to
+      prevent, and DEVIATIONS already flags it against itself. Two of our four documents just never got the
+      correction.
+    </p>
+    <div class="fix"><b>Fix</b>
+      Change the DATA.md entry to "considered for training, not used — the checker learns each boat's own
+      normal instead", and make PROJECT_OVERVIEW say the same. Use identical wording in all four files.
+    </div>
+  </div>
+
+  <div class="card stop">
+    <h4>3. Our own overview undersells what we built <span class="pill p-stop">High</span></h4>
+    <p>
+      The status table is a 23 July snapshot and eight days of work have happened since. It currently tells a
+      reader that safety alarms are only "planned" (they're built and tested), that route weather is
+      unfinished (it's trained and running), that the screen doesn't yet use route and health (it uses all
+      eight services), and that we have 174 tests (we have 307). The Claude sentence writer isn't in the
+      table at all.
+    </p>
+    <p>
+      Underselling is a smaller sin than overselling, but this is the document we told the team is the shared
+      reference — and it's the one a judge opens to ask "so what's actually done?"
+    </p>
+    <div class="fix"><b>Fix</b>
+      Rewrite the status table using section 08 of this page, re-date it, add a row for the sentence writer,
+      and delete the four items in the "what's left" list that are finished.
+    </div>
+  </div>
+
+  <div class="card stop">
+    <h4>4. Two numbers in the deck don't match the saved model <span class="pill p-stop">High</span></h4>
+    <p>Our own deck checklist says every number on slides 6–10 must match the code. Two don't:</p>
+    <ul class="tight small">
+      <li><strong>How much extra fuel a worn engine burns.</strong> DATA.md says <strong>7.9%</strong>. The saved model's own record says <strong>14.55%</strong>.</li>
+      <li><strong>How many power levels the data covers.</strong> DATA.md and slide 7 say <strong>7</strong>, which is the defensible reading. The saved model's record says <strong>9,207</strong> — it's counting something different, and as written the sentence is nonsense. It's also a file a judge can open.</li>
+    </ul>
+    <p>Either number can be defended. Having both in the same project cannot.</p>
+    <div class="fix"><b>Fix</b>
+      Decide which figure is the headline, correct the sentence the training program writes, retrain (about
+      five seconds), then make DATA.md and slide 7 match. <span class="muted">I can do this — it needs the
+      dataset downloaded first.</span>
+    </div>
+  </div>
+
+  <div class="card warn">
+    <h4>5. The test count is wrong in two places <span class="pill p-warn">Medium</span></h4>
+    <p>The README says 276 tests; the overview says 174. It's actually <strong>307</strong>. Free credibility
+    — but a stale number in the setup instructions reads as a project nobody is maintaining.</p>
+  </div>
+
+  <div class="card warn">
+    <h4>6. DEVIATIONS says route planning "is not built yet" <span class="pill p-warn">Medium</span></h4>
+    <p>Written when it wasn't. It is now the second-largest part of the project. The surrounding point about
+    depth data is still correct, so only fix that one phrase. Also re-date the header: it says "reviewed 22
+    July" while two entries below it are dated the 30th and 31st.</p>
+  </div>
+
+  <div class="card warn">
+    <h4>7. The README's file list is missing a finished part <span class="pill p-warn">Medium</span></h4>
+    <p>Saving completed trips — the thing that makes the emissions report possible — doesn't appear in the
+    list at all, while the empty simulator folder does. The whole point of that list is that its "built" and
+    "planned" labels can be trusted; two wrong rows undo it.</p>
+  </div>
+
+  <div class="card warn">
+    <h4>8. The README mentions only three of our eight services <span class="pill p-warn">Medium</span></h4>
+    <p>Missing: safety alarms, saving trips, and both emissions reports. Two of those <em>are</em> Problem 3
+    and the ethics story — the parts we most want a judge to find.</p>
+  </div>
+
+  <div class="card warn">
+    <h4>9. "Trained models excluded" contradicts the deploy guide <span class="pill p-warn">Low</span></h4>
+    <p>The README's file list says our trained models aren't included in the code. They are — deliberately,
+    with a written explanation, and the deploy guide depends on it. Six model files are in there. Change the
+    note to "training data excluded; finished models included on purpose".</p>
+  </div>
+
+  <div class="card warn">
+    <h4>10. Four "delete before pitch" notes are still in the deck <span class="pill p-warn">Medium</span></h4>
+    <p>Slides 8, 9, 10 and 12. Slide 10's matters and should be read before deleting: after retraining the
+    weather model on real data, route planning found <strong>zero fuel saving every single time</strong>
+    across 16 different dates and times. Don't put a route saving on a slide without checking it live first.
+    Slide 17's team names are still blank.</p>
+  </div>
+
+  <div class="card info">
+    <h4>11. One demo claim needs rehearsing in the right order <span class="pill p-info">Check</span></h4>
+    <p>"Disconnect the system mid-voyage and the screen ages its last known values instead of going blank."
+    That's a great moment and it does work — but only <em>after</em> a first successful answer. On a cold start
+    with nothing connected there's nothing to age. Rehearse it properly: start the voyage, let it run,
+    <em>then</em> disconnect.</p>
+  </div>
+
+  <div class="card info">
+    <h4>12. Three stray screenshots in the main folder <span class="pill p-info">Tidying</span></h4>
+    <p><code>chase1.png</code>, <code>chase2.png</code>, <code>ref-sim.png</code>. Either move them into the
+    docs folder as deck images or delete them — a public project folder with loose screenshots is the one
+    cosmetic thing a judge sees before any code.</p>
+  </div>
+
+  <div class="card warn">
+    <h4>13. The fuel price on screen isn't the one in our settings file <span class="pill p-warn">Medium</span></h4>
+    <p>
+      Our settings file says diesel costs <strong>₱68.50</strong> a litre. <strong>No part of the program
+      reads that setting.</strong> The calculations use a built-in <strong>₱70.00</strong> instead — so every
+      peso figure on the screen, and in any video we record, is worked out at ₱70.00.
+    </p>
+    <p>
+      Not a bug, but it's exactly the kind of mismatch our deck checklist forbids. If anyone quotes a fuel
+      price on stage, say <strong>₱70.00</strong> — or make the program read the setting.
+    </p>
+    <div class="fix"><b>Same situation, no harm done</b>
+      The CO₂ figure in the settings file is also unread, but it happens to match the built-in value exactly.
+      Worth knowing before someone tries changing it and wonders why nothing happens.
+    </div>
+  </div>
+
+  <div class="card info">
+    <h4>14. Nine of our eleven settings do nothing <span class="pill p-info">Low</span></h4>
+    <p>
+      Only the Claude password and the Claude model name are actually used. The database address, the two
+      Supabase settings, the two weather web addresses, the fuel price, the CO₂ figure and the two server
+      settings are all ignored by the program.
+    </p>
+    <p>
+      Harmless, but it means our example settings file advertises controls the system doesn't really have —
+      and a judge who tries to reconfigure the demo through it will be confused when nothing changes. Either
+      connect them or label them as reserved for later.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================ 10 -->
+<section id="readme">
+  <h2><span class="num">10</span>Ready-made fixes to paste in</h2>
+  <p class="lede">Copy-paste replacements for the two riskiest paragraphs. Everything else in the README survived review.</p>
+
+  <h3>10.1 — The "no hardware" statement</h3>
+<pre><code>**No physical hardware was used in this submission.**
+
+Every sensor reading is produced by the simulator that drives the bridge
+display: `apps/bridge/lib/telemetry.ts` imitates the engine's sensor wiring,
+`simulation.ts` moves the vessel, and `environment.ts` supplies the local
+conditions, laid over live Open-Meteo weather and sea data. Every reading is
+stamped `source="simulator"`, and there is no way for it to claim otherwise.
+
+The imitation is not decorative. Its idea of a healthy engine matches the
+health checker's, including how each reading rises with engine load, because
+the checker looks at all the sensors together: on a healthy engine coolant and
+exhaust temperature rise as one. That is why opening the throttle raises both
+and correctly sets off no alarm, while nudging a single sensor on its own is
+caught immediately.
+
+The sensors the simulator produces are exactly the ones a real retrofit kit
+would install, so everything downstream is the system that would run on a real
+boat. What is simulated is the sensing, not the system.</code></pre>
+
+  <h3>10.2 — Four wrong rows in the file list</h3>
+<pre><code>apps/api/          [built]   The 8 services: advise, route, maintenance, safety,
+                             voyages, emissions report (+CSV), health
+packages/store/    [built]   Saved voyages, behind a swappable storage layer
+packages/sim/      [planned] A Python version of the simulator; the working one
+                             is TypeScript, in apps/bridge/lib/
+models/            [built]   Finished models + their record cards, included on
+                             purpose; training data is excluded</code></pre>
+
+  <h3>10.3 — Two one-line corrections</h3>
+  <ul class="tight small">
+    <li>README line 142 — <code>pytest # 276 tests</code> should say <strong>307 tests</strong>.</li>
+    <li>README line 13 — the "coming soon" demo link becomes the real address the moment we publish. Do not submit with the placeholder still there.</li>
+  </ul>
+
+  <h3>10.4 — Optional: a "read this first" tour for judges</h3>
+  <p class="small">Four minutes of a judge's attention, spent in the order <em>we</em> choose. Paste under the links:</p>
+<pre><code>### If you only have four minutes
+
+1. docs/DEVIATIONS.md — every place this build differs from the plan we
+   submitted, why, and what it cost. Start here; it is the fastest way to
+   judge us.
+2. services/safety/rules.py — the line the AI is not allowed to cross. It
+   loads no model, and a test makes sure it never will.
+3. services/advisory/guard.py — what stops our AI from being wrong in
+   public: its sentence is compared against the one our software already
+   decided, and thrown away if any number moved.
+4. docs/DATA.md — why the fuel model is half physics, and how far we trust
+   a dataset from the wrong kind of engine (not as far as you'd expect).
+5. PRODUCT.md — the captain at 05:40 who determines every design decision
+   on the screen.</code></pre>
+</section>
+
+<!-- ============================================================ 11 -->
+<section id="runofshow">
+  <h2><span class="num">11</span>Demo script</h2>
+  <p class="lede">Rehearse in this order. It doubles as the shot list for the video.</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th class="mono">#</th><th>What you do</th><th>What you say</th><th>Something's wrong if…</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">0</td><td>Before you go on — check it's alive</td><td>—</td><td>The trained model didn't load, or the sentence writer isn't active. The trust bar must say LIVE.</td></tr>
+      <tr><td class="mono">1</td><td>Open the screen, press <strong>Start voyage</strong></td><td>"Nothing in this browser does any maths. Every number comes from one calculation, written once."</td><td>Speed stays at zero — the screen isn't reaching the calculations.</td></tr>
+      <tr><td class="mono">2</td><td>Turn wind and waves up, leave the throttle alone</td><td>"The boat genuinely slows down. In the prototype this replaced, that slider moved the readout and never the boat. That bug would now fail a test."</td><td>Speed doesn't drop. <strong>This is the whole product claim</strong> — if this fails, nothing else matters.</td></tr>
+      <tr><td class="mono">3</td><td>Point at the saving</td><td>"The product isn't 1650 RPM. It's <em>1650 RPM saves you 2.1 litres an hour</em> — and you still arrive on time."</td><td>—</td></tr>
+      <tr><td class="mono">4</td><td>Open the throttle wide, watch the Health panel</td><td>"Coolant and exhaust both climbed — and the panel stays calm. That's what a healthy engine does under load, and our system learned it. A simple threshold alarm would have gone off."</td><td>It alarms — the two copies of the healthy values have drifted apart.</td></tr>
+      <tr><td class="mono">5</td><td>Trigger the coolant fault on its own</td><td>"One sensor moving alone. Flagged immediately, and it names the coolant. It cannot name a broken part or a date — our data rules forbid it this early."</td><td>—</td></tr>
+      <tr><td class="mono">6</td><td>Push a reading past an emergency limit</td><td>"Two completely separate judgements, and the fixed rule always wins. That alarm uses no AI, and a test fails if anyone ever adds one."</td><td>—</td></tr>
+      <tr><td class="mono">7</td><td>Cycle the five views, finish on <strong>helm</strong></td><td>"Dark, huge text, nothing hidden behind hovering. A captain looks at this for two seconds at a time, at 5:40 in the morning."</td><td>The Guimaras shoreline is missing — the map files didn't publish.</td></tr>
+      <tr><td class="mono">8</td><td>Export the month</td><td>"The first three crossings honestly report <em>no comparison available</em>. The fourth is measured against that boat's own three previous runs. This report refuses to flatter you."</td><td>—</td></tr>
+      <tr><td class="mono">9</td><td>Disconnect the calculations mid-voyage</td><td>"Signal drops on these routes constantly. Being offline is a designed state, not an error screen — and it never shows you an old number pretending to be new."</td><td>Only works after it has been running. Never open the demo cold with it disconnected.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="card warn">
+    <h4>One moment we might not have <span class="pill p-warn">Decide before the deck is finished</span></h4>
+    <p>
+      Route fuel savings. Since retraining the weather model on real recorded data, the route planner has
+      found <strong>zero saving on every single test</strong> — 16 different dates and times, plus a longer
+      crossing. The old hand-made weather pattern produced a number because it was designed to. Real weather
+      averaged over a 20 km stretch doesn't.
+    </p>
+    <p>
+      Two honest choices, and this one is yours: find a real route and time that does produce a saving before
+      the deadline, or present the zero deliberately. <em>"The system checked and confirmed there's nothing to
+      save on this crossing today"</em> is a perfectly good answer from an advisory system — arguably better
+      than one that always finds a number. What we cannot do is promise a figure on a slide and fail to
+      produce it live.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================ 12 -->
+<section id="qa">
+  <h2><span class="num">12</span>The hard questions, and our answers</h2>
+  <p class="lede">Seven questions a technical judge is likely to ask. The answers are already true — this is just where to find them.</p>
+
+  <div class="card go">
+    <h4>"Did you build the advanced forecasting model you promised?"</h4>
+    <p>
+      <strong>No, and the reason is structural.</strong> That kind of model predicts the future by looking at
+      what just happened. Our route planner has nothing to look at — it's asked for a path before the boat
+      leaves the wharf, knowing only where you're going and when you're leaving. Without recent readings to
+      work from, that model collapses into "predict the weather from a place and a time", which is exactly
+      what we built instead. Then we raced nine predictions against a simple historical-average table on six
+      months of real weather we'd held back, and <strong>the simple table won five of the nine</strong>. We
+      shipped the losing scoreboard rather than quietly tuning it away.
+    </p>
+  </div>
+
+  <div class="card go">
+    <h4>"What stops your AI from saying something wrong in public?"</h4>
+    <p>
+      <strong>Claude is handed a finished sentence and asked only to say it better.</strong> What comes back is
+      compared against the original: every number must match exactly, and it isn't allowed to give an order.
+      Fail either check and it's thrown away, our plain sentence is used instead, and the screen records which
+      one the captain is reading. That's the difference between having an AI in the product and having an AI
+      in the decision — we only have the first.
+    </p>
+  </div>
+
+  <div class="card go">
+    <h4>"You trained a boat fuel model on a gas turbine."</h4>
+    <p>
+      <strong>Yes, and we only take one thing from it:</strong> how much extra fuel a <em>worn</em> engine
+      burns compared with a healthy one at the same load. Not the fuel amounts, and — importantly — not the
+      shape of its low-power curve. A gas turbine wastes about 7× its best fuel rate at low power; a diesel
+      about 1.5×. Copying that curve would have overstated our savings by about <strong>five times, in our own
+      favour</strong>. There's a test keeping our diesel curve inside published limits so it can never drift
+      back.
+    </p>
+  </div>
+
+  <div class="card go">
+    <h4>"How do I know your route savings and throttle savings agree?"</h4>
+    <p>
+      <strong>Because there's only one fuel calculation, and a test enforces it.</strong> The route planner
+      costs every segment using the same calculation the throttle advice uses; a single-segment route agrees
+      with the throttle advice to six decimal places. Emissions use the same fuel figure again. You cannot
+      find two numbers in this system that disagree, because there's only one place they come from.
+    </p>
+  </div>
+
+  <div class="card go">
+    <h4>"What happens when your model is wrong?"</h4>
+    <p>
+      <strong>Safety doesn't ask it.</strong> The emergency alarms load no model, remember nothing between
+      checks, and a test makes sure they never will. Engine over 105 °C, oil pressure under 100 kPa, battery
+      outside 12.0–15.8 V, exhaust over 580 °C — all readable off the page and checkable against an engine
+      manual. A sensor that isn't reporting is marked "not checked", never assumed safe. Same reading, same
+      answer, forever.
+    </p>
+  </div>
+
+  <div class="card warn">
+    <h4>"Your predictive maintenance can't actually predict anything yet."</h4>
+    <p>
+      <strong>Correct — and our code enforces that.</strong> In stage one it can say which sensor is drifting
+      and physically cannot name a part or a date; the data rules reject any attempt. Stage two needs a
+      history of real breakdowns, which a newly installed unit doesn't have.
+      <span class="muted">Say this before they do.</span>
+    </p>
+  </div>
+
+  <div class="card warn">
+    <h4>"Show me the hardware."</h4>
+    <p>
+      <strong>There isn't any, and we declare it on slide 4.</strong> The kit is fully specified — rev counter,
+      exhaust probe, motion sensor, GPS, fuel meter, weather feed — and what our models read is exactly what
+      that kit would produce. This is a working system waiting for sensors, not a mock-up.
+      <span class="muted">Fix item 1 in section 09 first, or this answer points at an empty folder.</span>
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================ 13 -->
+<section id="numbers">
+  <h2><span class="num">13</span>Numbers to memorise</h2>
+  <p class="lede">Every figure here comes from a saved model record or a passing test. If a number isn't on this list, don't say it on stage.</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>What</th><th class="mono">Value</th><th>Where it's from</th></tr></thead>
+    <tbody>
+      <tr><td>How far off our fuel model is</td><td class="mono">0.085%</td><td>tested on engine conditions it had never seen</td></tr>
+      <tr><td>How far off a straight-line model would be</td><td class="mono">0.64%</td><td>same test</td></tr>
+      <tr><td>How far off having no model is</td><td class="mono">5.02%</td><td>same test — this is the size of the problem</td></tr>
+      <tr><td>Engine wear states trained on</td><td class="mono">1,326</td><td>the model's own record</td></tr>
+      <tr><td>How many were hidden from training</td><td class="mono">332 (25%)</td><td>whole states, not random rows</td></tr>
+      <tr><td>Difference between the saved and trained model</td><td class="mono">~1 in a million</td><td>ordinary rounding; we refuse to save it if it's worse</td></tr>
+      <tr><td>Published program size vs full toolkit</td><td class="mono">85 MB / 358 MB</td><td>what lets it run cheaply in the cloud</td></tr>
+      <tr><td>Real weather readings trained on</td><td class="mono">196,272</td><td>936 dropped for a missing value, never invented</td></tr>
+      <tr><td>Weather history covered</td><td class="mono">2.6 years</td><td>Jan 2024 – Jul 2026, 9 points over the Iloilo Strait</td></tr>
+      <tr><td>Predictions where the simple table beat the AI</td><td class="mono">5 of 9</td><td>the scoreboard we kept instead of hiding</td></tr>
+      <tr><td>Route and throttle agreement</td><td class="mono">6 decimal places</td><td>enforced by a test</td></tr>
+      <tr><td>CO₂ per litre of diesel</td><td class="mono">2.68 kg</td><td>chemistry, not a tuned guess</td></tr>
+      <tr><td>Health score, healthy engine at full throttle</td><td class="mono">0.09</td><td>from the deck — <strong>check live before quoting</strong></td></tr>
+      <tr><td>Health score with a coolant fault</td><td class="mono">0.99</td><td>from the deck — <strong>check live before quoting</strong></td></tr>
+      <tr><td>Automated tests</td><td class="mono">307 passing</td><td>re-run 1 Aug 2026</td></tr>
+      <tr><td>Diesel price used on screen</td><td class="mono">₱70.00 / litre</td><td><span class="pill p-warn">Note</span> our settings file says ₱68.50 but nothing reads it — see item 13</td></tr>
+      <tr><td class="muted">Extra fuel a worn engine burns</td><td class="mono">7.9% or 14.55%</td><td><span class="pill p-stop">Unresolved</span> our two documents disagree — see item 4. Don't quote it yet.</td></tr>
+      <tr><td class="muted">Route fuel saving</td><td class="mono">0.0 litres</td><td><span class="pill p-warn">Check live</span> zero on every test so far — see section 11</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============================================================ 14 -->
+<section id="needsyou">
+  <h2><span class="num">14</span>Only a person can do these</h2>
+  <p class="lede">Grouped by why. Anything not on this list, I can do — just say which.</p>
+
+  <h3>A. Accounts and payments</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>What</th><th>What it blocks</th><th>What to do</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Money on the Claude account</strong><br><span class="small pill p-go">Password set &amp; valid</span></td>
+        <td><span class="pill p-stop">The AI demo</span> Re-tested 1 Aug: the password works, but the service replies
+          <em>"your credit balance is too low."</em> So every sentence still comes from our plain backup text,
+          and the strongest point on slide 12 never gets demonstrated.</td>
+        <td>console.anthropic.com → <strong>Plans &amp; Billing</strong> → buy credit. About $10 is plenty
+          — each sentence costs well under a cent. Then put the same password on the published version,
+          republish (settings only apply to new publishes), and test by actually asking for advice — not by
+          the are-you-alive check, which can't tell the difference.</td>
+      </tr>
+      <tr>
+        <td><strong>Database settings</strong><br><span class="small pill p-go">All filled in</span></td>
+        <td><span class="pill p-mute">Nothing — no part of the program reads them</span> We searched the entire
+          codebase: those three settings appear only in the settings files and in no working code. There is no
+          database connection built.</td>
+        <td>Nothing more to do. Filling them in was harmless. <span class="muted">Note: when published to the
+          cloud, saved trips don't survive between visits — so demo the emissions report on your own laptop if
+          you want the four-crossing sequence to be reliable.</span></td>
+      </tr>
+      <tr>
+        <td><strong>A Vercel account, and the publishing tool</strong></td>
+        <td><span class="pill p-stop">The demo link</span> The tool isn't installed on this machine, and signing
+          in needs a human.</td>
+        <td>Also, and critically: <strong>turn off "Deployment Protection"</strong> on the screen's project.
+          It's on by default on some plans and makes the link ask strangers to log in — which is exactly the
+          restricted-access situation that disqualifies us.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>B. Decisions only the team can make</h3>
+  <ol>
+    <li><strong>Route savings: hunt or reframe?</strong> Spend time hunting for a route and departure time that
+      produces a real saving, or present the zero as a feature. This changes what slide 10 is allowed to say.
+      <span class="muted">I can run the search if you want it done.</span></li>
+    <li><strong>Which worn-engine number is the real one</strong> — 7.9% or 14.55%. One of them goes on slide 7.
+      I can retrain and regenerate the record; which figure represents our claim is yours.</li>
+    <li><strong>Item 1: move the simulator, or fix the documents?</strong> Rewriting it in Python is the
+      faithful answer and is not a three-day job. Correcting the documents takes ten minutes and is equally
+      honest. <span class="muted">My recommendation: correct the documents.</span></li>
+    <li><strong>Do the five unbuilt items stay unbuilt?</strong> My strong view: yes. A half-finished feature
+      is worth less than an honest list.</li>
+    <li><strong>Team names and roles for slide 17.</strong> I have no way to know who did what.</li>
+  </ol>
+
+  <h3>C. Things that need a person in a room</h3>
+  <ul>
+    <li><strong>Record the video.</strong> Voice, pacing, and deciding what to show. The script is section 11.</li>
+    <li><strong>Build the PowerPoint.</strong> The words are written; the design, the diagram on slide 3 and the
+      screenshot on slide 11 are yours. <span class="muted">I can generate a diagram or slide-ready page if that helps.</span></li>
+    <li><strong>Rehearse on the published link</strong> from a machine that isn't the one we built on, ideally on
+      mobile data. That's the only test that catches what a judge will actually hit.</li>
+    <li><strong>Confirm the code repository is public</strong> and that the setup instructions work from scratch.</li>
+    <li><strong>Have a backup for bad venue wifi.</strong> The screen pulls live weather from the internet. It
+      degrades gracefully — we checked — but if the venue wifi is hostile, a recorded video is the insurance.</li>
+    <li><strong>Submit.</strong> The portal, the deadline, the links.</li>
+  </ul>
+
+  <h3>D. What I can take off your hands right now</h3>
+  <p class="small">
+    Items 1–9, 12, 13 and 14 are all edits I can make in one pass: the hardware statement, the dataset
+    contradiction across four files, the status table, the test counts, the file list, the service list, the
+    two stale lines in DEVIATIONS, the fuel price, and labelling the unused settings. I can also strip the four
+    "delete before pitch" notes from the deck, regenerate the model record, and write the judges' tour. Say
+    which and I'll do them.
+  </p>
+</section>
+
+<footer>
+  Checked 1 Aug 2026 · code version main @ 1e79a6c · 307 tests passing · no code-quality warnings · screen app clean<br>
+  Already fixed since the first version of this page: the settings file now loads when you start the system the
+  documented way; the Claude model name now matches across all four documents; the deploy guide's check was
+  replaced with one that actually proves the AI works.<br>
+  This file is <code>docs/PITCH_READINESS.html</code> and is not yet saved to the repository. It's internal —
+  commit it or delete it before submitting.
+</footer>
+
+</div>
+</body>
+</html>
