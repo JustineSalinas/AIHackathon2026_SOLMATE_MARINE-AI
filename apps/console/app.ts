@@ -625,6 +625,71 @@ export function createApp(): express.Express {
   });
 
   /**
+   * Component design life. Sibling of `/api/maintenance`, not a variant of it:
+   * that one reports what is deviating now, this one reports how much published
+   * design life each part has left at the duty it is actually worked at.
+   *
+   * Takes exposure, not telemetry. Life is arithmetic on accumulated wear, so
+   * sending frames here would invite the life table to start reacting to
+   * condition -- a far stronger claim than this build supports.
+   */
+  app.post("/api/maintenance/component-life", async (req, res) => {
+    const {
+      wearHours = null,
+      severityIndex = null,
+      hoursPerDay = null,
+      wearHoursAtLastRenewal = null,
+    } = req.body || {};
+
+    const wear = numberOrNull(wearHours);
+    if (wear === null) {
+      res.status(400).json({ error: "wearHours required" });
+      return;
+    }
+
+    try {
+      const upstream = await fetch(`${API_URL}/maintenance/component-life`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          vessel_id: "MV-CONSOLE-01",
+          wear_hours: wear,
+          // Both are gt=0 upstream, so `Number(null)` -> 0 would 422 the request.
+          // numberOrNull tests for absence before finiteness.
+          severity_index: numberOrNull(severityIndex),
+          hours_per_day: numberOrNull(hoursPerDay),
+          wear_hours_at_last_renewal: wearHoursAtLastRenewal ?? null,
+        }),
+      });
+      if (!upstream.ok) throw new Error(`upstream ${upstream.status}`);
+      const data = (await upstream.json()) as Record<string, unknown>;
+      const components = (data.components as Record<string, unknown>[]) ?? [];
+      res.json({
+        wearHours: data.wear_hours,
+        severityIndex: data.severity_index,
+        hoursPerDay: data.hours_per_day,
+        beyondDesignLifeCount: data.beyond_design_life_count,
+        advisoryEn: data.advisory_en,
+        advisoryFil: data.advisory_fil,
+        components: components.map((c) => ({
+          id: c.component_id,
+          label: c.label_en,
+          labelFil: c.label_fil,
+          system: c.system,
+          designLifeWearHours: c.design_life_wear_hours,
+          wearHoursRemaining: c.wear_hours_remaining,
+          lifeScore: c.life_score,
+          percentConsumed: c.percent_consumed,
+          monthsRemaining: c.months_remaining,
+          condition: c.condition,
+        })),
+      });
+    } catch (e) {
+      apiFailure(res, "/maintenance/component-life", e);
+    }
+  });
+
+  /**
    * Route. Was `/api/ai-waypoints` and `/api/ai-review-route`, which asked a
    * language model to invent waypoints while promising "deep navigable water" --
    * a promise it had no depth data to keep.

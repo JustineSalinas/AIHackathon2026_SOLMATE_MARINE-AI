@@ -102,7 +102,14 @@ import "driver.js/dist/driver.css";
             // maintenance reasons in -- degradation rates are per run-hour, and
             // detection latency is reported in run-hours -- so metering it in
             // wall-clock would make a 1000x voyage look like it ran for two minutes.
-            ship: { progress: 0, lat: 10.6928, lng: 122.5644, angle: 0, headingDeg: 0, targetHeadingDeg: 0, actualKnots: 0, distanceTraveledNM: 0, fuelUsedL: 0, runHours: 0, currentPax: null, steering: false },
+            // wearHours is run-time weighted by how hard the engine was working at
+            // the time -- cruise 1.0, overload 2.6, idle 0.35. It accumulates
+            // INCREMENTALLY rather than being derived at the end, because an engine
+            // that cruised for a year then thrashed for a week is not the same
+            // engine as one that averaged the two, and runHours x current-severity
+            // cannot tell them apart. Component design lives are counted in this;
+            // see services/maintenance/lifespan.py.
+            ship: { progress: 0, lat: 10.6928, lng: 122.5644, angle: 0, headingDeg: 0, targetHeadingDeg: 0, actualKnots: 0, distanceTraveledNM: 0, fuelUsedL: 0, runHours: 0, wearHours: 0, lastLoadFraction: 0.5, currentPax: null, steering: false },
             
             basePath: [],     
             targetPath: [],   
@@ -141,6 +148,22 @@ import "driver.js/dist/driver.css";
                 faultStartHours: null,
                 detectedAtHours: null,
                 lastSampleHours: -Infinity,
+                // Timestamped anomaly history. The detector reports a state; the
+                // operator needs a record, because "coolant drifted at 10:35 and
+                // again at 11:20" is a different conversation with a mechanic from
+                // "coolant is drifting". Bounded -- this is a strip, not a database.
+                events: [],
+            },
+            // Component design life. Separate from `maintenance` above on purpose:
+            // that watches condition and says what is deviating now, this spends
+            // accumulated wear against published design lives and says what is
+            // running out. Neither feeds the other, because a design life that
+            // moved when an anomaly fired would be a prediction wearing a service
+            // manual's clothes.
+            componentLife: {
+                report: null,
+                lastCallMs: 0,
+                inFlight: false,
             },
             aiStrategy: ""
         };
@@ -2612,7 +2635,59 @@ const MAINTENANCE_INTERVAL_MS = 15000;
  * the baseline and run-hours deliberately survive a voyage reset (see the note
  * in the port-clearing teardown).
  */
+/**
+ * Where each X-ray block sits on the hull, kept apart from how it is coloured.
+ *
+ * These strings MUST match the element's position classes in index.html. The
+ * state code below recolours blocks by exhaust temperature and vibration, and it
+ * did so by rewriting className wholesale -- which meant every colour change was
+ * also a position change, silently dragging each block back to the centre of the
+ * old top-down hull. Colour is state; position is not. Composing the two from
+ * here keeps the geometry in one place and lets the state code stay a list of
+ * colours.
+ */
+const XRAY_LAYOUT = {
+    engine: "absolute left-[23%] top-[36%] w-[17%] h-[34%] rounded-lg flex flex-col items-center justify-center transition-colors",
+    propeller: "absolute left-[3%] top-1/2 -translate-y-1/2 w-[2.2%] h-[26%] rounded-full transition-colors",
+    shaft: "absolute left-[6.5%] top-1/2 -translate-y-1/2 w-[9%] h-[3px] transition-colors",
+    generator: "absolute left-[60%] top-[40%] w-[8%] h-[24%] rounded-md flex items-center justify-center transition-colors",
+};
+
 const MAINTENANCE_SAMPLE_RUN_HOURS = 10 / 3600;
+
+/**
+ * Relative wear cost of an hour at each load, cruise = 1.0.
+ *
+ * MIRRORS `SEVERITY_WEIGHTS` and `LOAD_BANDS` in services/maintenance/duty.py,
+ * which is the source of truth. Duplicated here only because the console is
+ * where the load fraction is known every tick, and posting a frame to the API on
+ * every tick to have it multiplied by a constant would be absurd. If duty.py's
+ * weights change, change them here too.
+ *
+ * Overload is deliberately more than proportional: thermal and mechanical
+ * loading rise faster than load, which is the mechanism by which bad throttling
+ * becomes early wear. Idle is deliberately not zero: extended low-load running
+ * glazes bores, so a boat cannot idle its way out of a component's design life.
+ */
+const WEAR_WEIGHT_BANDS = [
+    { upTo: 0.15, weight: 0.35 },    // idle
+    { upTo: 0.40, weight: 0.50 },    // light
+    { upTo: 0.75, weight: 1.00 },    // cruise
+    { upTo: 0.90, weight: 1.60 },    // heavy
+    { upTo: Infinity, weight: 2.60 } // overload
+];
+
+function wearWeightForLoad(loadFraction) {
+    const f = Number.isFinite(loadFraction) ? Math.max(0, loadFraction) : 0.5;
+    for (const band of WEAR_WEIGHT_BANDS) {
+        if (f < band.upTo) return band.weight;
+    }
+    return 1.0;
+}
+
+/** How often component life is re-resolved. It moves in wear-hours, so polling
+ *  it faster would only re-render the same answer. */
+const COMPONENT_LIFE_INTERVAL_MS = 20000;
 
 /**
  * Injectable engine faults, as degradation RATES PER RUN-HOUR.
@@ -2888,7 +2963,7 @@ function collectMaintenanceFrame({ coolantC, oilBar, egtC, vibG, batteryV, parti
         }),
     })
         .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
-        .then(data => { m.status = data; noteMaintenanceDetection(); renderMaintenanceStatus(); })
+        .then(data => { m.status = data; recordAnomalyEvent(); noteMaintenanceDetection(); renderMaintenanceStatus(); })
         // Offline is a state, not a crash: the strip keeps its last reading and
         // says nothing new, exactly as the throttle and route panels do.
         .catch(() => { m.status = null; renderMaintenanceStatus(); })
@@ -2926,6 +3001,218 @@ function noteMaintenanceDetection() {
 }
 
 /** Paint the API's verdict. The console forms no opinion of its own here. */
+/** Most anomaly events kept. A strip an operator scans, not a database. */
+const ANOMALY_EVENT_LIMIT = 12;
+
+/**
+ * Append a timestamped anomaly entry, if this is genuinely a new one.
+ *
+ * The detector reports a STATE every fifteen seconds; an operator needs a
+ * RECORD. "Coolant drifted at 10:35, and vibration again at 11:20" is a
+ * different conversation with a mechanic from "coolant is drifting".
+ *
+ * De-duplicated on the deviating stream, because without that the same fault
+ * would write an entry on every poll and the log would say nothing except that
+ * the console is still running. A new entry means the anomaly cleared and
+ * returned, or a different stream took over -- both worth a line.
+ */
+function recordAnomalyEvent() {
+    const m = State.maintenance;
+    const s = m.status;
+    if (!s || !s.isAnomalous) {
+        // Healthy clears the latch, so a genuine recurrence logs again.
+        m.lastEventStream = null;
+        return;
+    }
+    const top = (s.streams && s.streams[0]) || null;
+    const streamKey = top ? top.label : 'unattributed';
+    if (m.lastEventStream === streamKey) return;
+    m.lastEventStream = streamKey;
+
+    const now = new Date();
+    const stamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} `
+        + `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+    const z = top ? Number(top.zScore) : null;
+
+    m.events.unshift({
+        stamp,
+        label: top ? top.label : 'Engine anomaly',
+        detail: z != null ? `${z >= 0 ? '+' : ''}${z.toFixed(1)}σ` : '',
+        score: Math.round((Number(s.anomalyScore) || 0) * 100),
+        runHours: (State.ship.runHours || 0).toFixed(2),
+    });
+    if (m.events.length > ANOMALY_EVENT_LIMIT) m.events.length = ANOMALY_EVENT_LIMIT;
+    renderAnomalyLog();
+}
+
+/** Paint the anomaly log, newest first. */
+function renderAnomalyLog() {
+    const el = document.getElementById('listAnomalyEvents');
+    if (!el) return;
+    const events = State.maintenance.events || [];
+    if (!events.length) {
+        el.innerHTML = '<div class="text-xs text-slate-500">No anomalies recorded this session.</div>';
+        return;
+    }
+    el.innerHTML = events.map(e => `
+        <div class="flex items-baseline justify-between gap-2 py-1 border-b border-slate-800/60 last:border-0">
+            <div class="min-w-0">
+                <span class="hud-font text-[0.62rem] text-slate-500">${e.stamp}</span>
+                <span class="text-xs text-amber-300 ml-1.5">${e.label}</span>
+            </div>
+            <span class="hud-font text-[0.62rem] text-slate-400 shrink-0">${e.detail} · ${e.score}% · ${e.runHours} h</span>
+        </div>`).join('');
+}
+
+/**
+ * Re-resolve component design life against accumulated wear.
+ *
+ * Sends three numbers, never telemetry: wear-hours, the lifetime severity rate,
+ * and the operator's stated running hours per day. Wear-hours are accumulated
+ * tick by tick here, so `wearHours / runHours` is this engine's true lifetime
+ * severity rather than a current-window reading -- and the two multiply back to
+ * exactly the figure the console holds.
+ *
+ * Knows nothing about the anomaly detector, deliberately.
+ */
+function refreshComponentLife() {
+    const c = State.componentLife;
+    const wearHours = State.ship.wearHours || 0;
+    if (c.inFlight || wearHours <= 0) return;
+
+    const now = Date.now();
+    if (now - c.lastCallMs < COMPONENT_LIFE_INTERVAL_MS) return;
+    c.lastCallMs = now;
+    c.inFlight = true;
+
+    const runHours = State.ship.runHours || 0;
+    // Null rather than 1.0 when there is nothing to divide: the API declares an
+    // unprojectable schedule instead of assuming this engine cruised all its life.
+    const severityIndex = runHours > 0 && wearHours > 0 ? wearHours / runHours : null;
+    const { hoursPerDay } = loadOperatorHistory();
+
+    fetch('/api/maintenance/component-life', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            wearHours,
+            severityIndex,
+            hoursPerDay: hoursPerDay > 0 ? hoursPerDay : null,
+        }),
+    })
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+        .then(data => { c.report = data; renderComponentLife(); })
+        // Offline keeps the last resolved report on screen. A design life does not
+        // stop being true because the link dropped.
+        .catch(() => {})
+        .finally(() => { c.inFlight = false; });
+}
+
+const LIFE_CONDITION_STYLE = {
+    beyond_design_life: { bar: 'bg-red-500',     text: 'text-red-300',     tag: 'BEYOND LIFE' },
+    renew_soon:         { bar: 'bg-amber-400',   text: 'text-amber-300',   tag: 'RENEW SOON' },
+    monitor:            { bar: 'bg-sky-400',     text: 'text-sky-300',     tag: 'MONITOR' },
+    healthy:            { bar: 'bg-emerald-500', text: 'text-emerald-300', tag: 'OK' },
+};
+
+/** Paint the P.P.S. table and tint the hull diagram blocks by their worst part. */
+function renderComponentLife() {
+    const r = State.componentLife.report;
+    const listEl = document.getElementById('listComponentLife');
+    const advisoryEl = document.getElementById('txtComponentLifeAdvisory');
+    const wearEl = document.getElementById('outWearHours');
+    const sevEl = document.getElementById('outDutySeverity');
+
+    const runHours = State.ship.runHours || 0;
+    const wearHours = State.ship.wearHours || 0;
+    if (wearEl) wearEl.textContent = `${wearHours.toFixed(2)} h`;
+    if (sevEl) sevEl.textContent = runHours > 0 && wearHours > 0
+        ? `${(wearHours / runHours).toFixed(2)}×` : '--';
+
+    if (!r) {
+        if (advisoryEl) advisoryEl.textContent = 'Component life resolves once the engine has run-hours.';
+        if (listEl) listEl.innerHTML = '';
+        return;
+    }
+
+    if (advisoryEl) {
+        advisoryEl.textContent = r.advisoryEn || '';
+        advisoryEl.className = r.beyondDesignLifeCount
+            ? 'text-xs text-red-300 leading-snug'
+            : 'text-xs text-slate-400 leading-snug';
+    }
+
+    if (listEl) {
+        listEl.innerHTML = (r.components || []).map(c => {
+            const style = LIFE_CONDITION_STYLE[c.condition] || LIFE_CONDITION_STYLE.healthy;
+            const pct = Math.max(0, Math.min(100, (Number(c.lifeScore) || 0) * 100));
+            // Months are shown only when the API could project them. A dash is the
+            // honest reading when duty or the working pattern is unknown -- inventing
+            // a horizon is exactly what this whole split exists to avoid.
+            const horizon = c.monthsRemaining != null
+                ? `${Number(c.monthsRemaining).toFixed(0)} mo`
+                : '--';
+            return `
+                <div class="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 items-center py-1.5 border-b border-slate-800/60 last:border-0">
+                    <div class="min-w-0">
+                        <div class="text-xs text-slate-200 truncate">${c.label}</div>
+                        <div class="h-1.5 mt-1 bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-full ${style.bar}" style="width:${pct}%"></div>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="hud-font text-xs ${style.text}">${horizon}</div>
+                        <div class="text-[0.58rem] text-slate-500 tracking-wider">${Math.round(pct)}% · ${style.tag}</div>
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    // The hull diagram carries the score rather than decorating: each block takes
+    // the condition of its worst component, so a judge reads the boat, not a table.
+    const worstBySystem = {};
+    for (const c of r.components || []) {
+        const rank = { healthy: 0, monitor: 1, renew_soon: 2, beyond_design_life: 3 };
+        if (!worstBySystem[c.system] || rank[c.condition] > rank[worstBySystem[c.system].condition]) {
+            worstBySystem[c.system] = c;
+        }
+    }
+    for (const [system, worst] of Object.entries(worstBySystem)) {
+        const el = document.getElementById(`hullBlock-${system}`);
+        if (!el) continue;
+        const style = LIFE_CONDITION_STYLE[worst.condition] || LIFE_CONDITION_STYLE.healthy;
+        el.dataset.condition = worst.condition;
+        el.title = `${worst.label} — ${Math.round((worst.lifeScore || 0) * 100)}% of design life remaining`;
+        const bar = el.querySelector('[data-life-bar]');
+        if (bar) {
+            bar.className = `h-full ${style.bar} transition-all duration-700`;
+            bar.style.width = `${Math.max(0, Math.min(100, (worst.lifeScore || 0) * 100))}%`;
+        }
+    }
+}
+
+/**
+ * Sea-state context for the A.I. analysis line.
+ *
+ * Derived from physics this frame already computed -- no model, no new input.
+ * Relative wave direction near the beam is a boat rolling through cross seas;
+ * near the bow it is punching into a head sea. Saying so is a reading of the
+ * same numbers the optimiser costs the route with, not an interpretation layered
+ * on top of them.
+ */
+function seaStateContext() {
+    const waveDir = getSafeVal('inWaveDir', null);
+    const waveHt = getSafeVal('inWave', 0);
+    const heading = State.ship.headingDeg;
+    if (!Number.isFinite(waveDir) || !Number.isFinite(heading) || !(waveHt > 0.3)) return '';
+
+    const rel = ((waveDir - heading) % 360 + 360) % 360;
+    const off = Math.min(rel, 360 - rel);           // 0 = head sea, 180 = following
+    if (off <= 45) return `punching into a ${waveHt.toFixed(1)} m head sea`;
+    if (off >= 135) return `running with a ${waveHt.toFixed(1)} m following sea`;
+    return `working through ${waveHt.toFixed(1)} m cross seas`;
+}
+
 /**
  * Operator-entered maintenance history.
  *
@@ -2951,9 +3238,13 @@ function loadOperatorHistory() {
         return {
             daysSinceService: Number.isFinite(Number(raw.daysSinceService)) ? Number(raw.daysSinceService) : 0,
             failureReports: Number.isFinite(Number(raw.failureReports)) ? Number(raw.failureReports) : 0,
+            // Hours per day is the bridge between wear-hours and a calendar month.
+            // Defaults to 6 -- a typical short-haul passenger day -- but it is an
+            // operator statement, and the API omits months entirely if it is absent.
+            hoursPerDay: Number.isFinite(Number(raw.hoursPerDay)) ? Number(raw.hoursPerDay) : 6,
         };
     } catch (e) {
-        return { daysSinceService: 0, failureReports: 0 };
+        return { daysSinceService: 0, failureReports: 0, hoursPerDay: 6 };
     }
 }
 
@@ -3013,8 +3304,15 @@ function renderMaintenanceStatus() {
     const conf = baselineConfidenceWording(Number(s.baselineConfidence));
 
     const headline = s.isAnomalous
-        ? `<span class="text-amber-300 font-semibold">Anomaly ${pct}%</span>`
-        : `<span class="text-emerald-300 font-semibold">No anomaly ${pct}%</span>`;
+        ? `<span class="text-amber-300 font-semibold">Status: Anomaly ${pct}%</span>`
+        : `<span class="text-emerald-300 font-semibold">Status: Normal ${pct}%</span>`;
+
+    // The sketch's "boat is fighting through cross waves", derived rather than
+    // written: relative wave direction is already computed for the route cost.
+    const context = seaStateContext();
+    const contextLine = context
+        ? `<div class="text-xs text-slate-400 mt-0.5">Vessel is ${context}.</div>`
+        : '';
 
     // Slot 1 -- deviating streams. Ranked, and shown even when healthy: which
     // channel sits closest to its limit is trending information, and a blank
@@ -3057,10 +3355,12 @@ function renderMaintenanceStatus() {
         : '';
 
     el.innerHTML = `
-        <div class="flex items-baseline justify-between gap-2 mb-2">
+        <div class="flex items-baseline justify-between gap-2">
             ${headline}
             <span class="text-[0.62rem] text-slate-500 tracking-wider uppercase">Phase 1 · ${provenance}</span>
         </div>
+        ${contextLine}
+        <div class="mb-2"></div>
         <div class="grid grid-cols-2 gap-x-3 gap-y-2">
             <div class="col-span-2">
                 <div class="text-[0.62rem] text-slate-500 tracking-wider uppercase mb-0.5">Deviating stream(s)</div>
@@ -4677,6 +4977,9 @@ function refreshAnalyticsSidebar() {
         function calculatePhysics(throttleUser) {
             const p = computePhysicsState(throttleUser, true);
             State.ship.crabAngleDeg = p.crabAngleDeg || 0;
+            // Stashed for the manual-helm branch, which accumulates wear-hours but
+            // runs no physics of its own to get a load fraction from.
+            if (Number.isFinite(p.engineLoadFraction)) State.ship.lastLoadFraction = p.engineLoadFraction;
             // Stashed for the manual-helm branch of updateSimulation, which has
             // no route and so never computes physics of its own. Reusing the
             // figure this loop already produced keeps manual mode to one physics
@@ -4918,14 +5221,14 @@ function refreshAnalyticsSidebar() {
                     
                     // Update Propeller/Shaft Color based on Vibration
                     if (vib > 5.5) {
-                        xrayPropeller.className = "absolute bottom-1.5 left-1/2 -translate-x-1/2 w-9 h-1.5 bg-red-500 rounded-full shadow-[0_0_12px_#f43f5e] transition-colors animate-pulse";
-                        xrayShaft.className = "absolute bottom-2 left-1/2 -translate-x-1/2 w-1.5 h-6 bg-red-600 transition-colors";
+                        xrayPropeller.className = `${XRAY_LAYOUT.propeller} bg-red-500 shadow-[0_0_12px_#f43f5e] animate-pulse`;
+                        xrayShaft.className = `${XRAY_LAYOUT.shaft} bg-red-600`;
                     } else if (vib > 4.0) {
-                        xrayPropeller.className = "absolute bottom-1.5 left-1/2 -translate-x-1/2 w-9 h-1.5 bg-amber-400 rounded-full shadow-[0_0_8px_#fbbf24] transition-colors";
-                        xrayShaft.className = "absolute bottom-2 left-1/2 -translate-x-1/2 w-1.5 h-6 bg-amber-600 transition-colors";
+                        xrayPropeller.className = `${XRAY_LAYOUT.propeller} bg-amber-400 shadow-[0_0_8px_#fbbf24]`;
+                        xrayShaft.className = `${XRAY_LAYOUT.shaft} bg-amber-600`;
                     } else {
-                        xrayPropeller.className = "absolute bottom-1.5 left-1/2 -translate-x-1/2 w-9 h-1.5 bg-emerald-400 rounded-full shadow-[0_0_8px_#10b981] transition-colors";
-                        xrayShaft.className = "absolute bottom-2 left-1/2 -translate-x-1/2 w-1.5 h-6 bg-emerald-600 transition-colors";
+                        xrayPropeller.className = `${XRAY_LAYOUT.propeller} bg-emerald-400 shadow-[0_0_8px_#10b981]`;
+                        xrayShaft.className = `${XRAY_LAYOUT.shaft} bg-emerald-600`;
                     }
                 }
                 
@@ -4952,13 +5255,13 @@ function refreshAnalyticsSidebar() {
                 const xrayEngine = document.getElementById('xrayEngine');
                 if (xrayEngine && xrayEngineIcon) {
                     if (egt > 430) {
-                        xrayEngine.className = "absolute bottom-8 left-1/2 -translate-x-1/2 w-14 h-16 border border-red-500 bg-red-500/25 rounded-lg flex flex-col items-center justify-center transition-colors shadow-[0_0_15px_rgba(244,63,94,0.5)] animate-pulse";
+                        xrayEngine.className = `${XRAY_LAYOUT.engine} border border-red-500 bg-red-500/25 shadow-[0_0_15px_rgba(244,63,94,0.5)] animate-pulse`;
                         xrayEngineIcon.className = "fa-solid fa-fan text-red-400 text-base transition-colors";
                     } else if (egt > 380) {
-                        xrayEngine.className = "absolute bottom-8 left-1/2 -translate-x-1/2 w-14 h-16 border border-amber-500/70 bg-amber-500/20 rounded-lg flex flex-col items-center justify-center transition-colors shadow-[0_0_12px_rgba(245,158,11,0.3)]";
+                        xrayEngine.className = `${XRAY_LAYOUT.engine} border border-amber-500/70 bg-amber-500/20 shadow-[0_0_12px_rgba(245,158,11,0.3)]`;
                         xrayEngineIcon.className = "fa-solid fa-fan text-amber-400 text-base transition-colors";
                     } else {
-                        xrayEngine.className = "absolute bottom-8 left-1/2 -translate-x-1/2 w-14 h-16 border border-emerald-500/60 bg-emerald-500/20 rounded-lg flex flex-col items-center justify-center transition-colors shadow-[0_0_12px_rgba(16,185,129,0.25)]";
+                        xrayEngine.className = `${XRAY_LAYOUT.engine} border border-emerald-500/60 bg-emerald-500/20 shadow-[0_0_12px_rgba(16,185,129,0.25)]`;
                         xrayEngineIcon.className = "fa-solid fa-fan text-emerald-400 text-base transition-colors";
                     }
                     if (rpm > 0) xrayEngineIcon.classList.add('animate-spin');
@@ -4969,10 +5272,10 @@ function refreshAnalyticsSidebar() {
                 if (xrayGenerator) {
                     const icon = xrayGenerator.querySelector('i');
                     if (rpm > 0) {
-                        xrayGenerator.className = "absolute bottom-28 left-1/2 -translate-x-1/2 w-7 h-7 border border-emerald-500/50 bg-emerald-500/15 rounded-md flex items-center justify-center shadow-[0_0_8px_rgba(16,185,129,0.2)] transition-colors";
-                        if(icon) icon.className = "fa-solid fa-bolt text-emerald-400 text-xs transition-colors";
+                        xrayGenerator.className = `${XRAY_LAYOUT.generator} border border-sky-500/50 bg-sky-500/15 shadow-[0_0_8px_rgba(56,189,248,0.2)]`;
+                        if(icon) icon.className = "fa-solid fa-bolt text-sky-300 text-xs transition-colors";
                     } else {
-                        xrayGenerator.className = "absolute bottom-28 left-1/2 -translate-x-1/2 w-7 h-7 border border-amber-500/50 bg-amber-500/15 rounded-md flex items-center justify-center shadow-[0_0_8px_rgba(245,158,11,0.2)] transition-colors";
+                        xrayGenerator.className = `${XRAY_LAYOUT.generator} border border-amber-500/50 bg-amber-500/15 shadow-[0_0_8px_rgba(245,158,11,0.2)]`;
                         if(icon) icon.className = "fa-solid fa-bolt text-amber-400 text-xs transition-colors";
                     }
                 }
@@ -5167,6 +5470,11 @@ function refreshAnalyticsSidebar() {
                     noxPpm: noxBase,
                     engineRpm: rpm,
                 });
+
+                // Component life on its own cadence -- a design life moves in
+                // wear-hours, so re-resolving it every tick would re-render one answer.
+                refreshComponentLife();
+                renderComponentLife();
             } else {
                 // Standby / Off display state when voyage has not started or has completed
                 updateDisplayValue('valFlow', '--');
@@ -5234,7 +5542,7 @@ function refreshAnalyticsSidebar() {
                 if (xrayRadarLine) xrayRadarLine.classList.remove('animate-[spin_2s_linear_infinite]');
                 
                 const xrayEngine = document.getElementById('xrayEngine');
-                if (xrayEngine) xrayEngine.className = "absolute bottom-8 left-1/2 -translate-x-1/2 w-14 h-16 border border-orange-500/60 bg-orange-500/20 rounded-lg flex flex-col items-center justify-center transition-colors shadow-[0_0_12px_rgba(249,115,22,0.25)]";
+                if (xrayEngine) xrayEngine.className = `${XRAY_LAYOUT.engine} border border-orange-500/60 bg-orange-500/20 shadow-[0_0_12px_rgba(249,115,22,0.25)]`;
                 
                 
                 const badgeHealth = document.getElementById('badgeEngineHealth');
@@ -5568,8 +5876,14 @@ function refreshAnalyticsSidebar() {
                 // burning against the throttle. Reuses the flow the display loop
                 // already computed this frame rather than running the physics a
                 // second time. Same integral, same clock as the auto branch.
-                // Run-hours on the same step and the same clock as distance above.
-                State.ship.runHours = (State.ship.runHours || 0) + (simMult * deltaTime) / 3600;
+                // Run-hours on the same step and the same clock as distance above,
+                // and wear-hours weighted by the load the engine was actually at.
+                // Manual helm computes no physics of its own, so it reuses the last
+                // load the display loop worked out rather than assuming cruise.
+                const manualStepH = (simMult * deltaTime) / 3600;
+                State.ship.runHours = (State.ship.runHours || 0) + manualStepH;
+                State.ship.wearHours = (State.ship.wearHours || 0)
+                    + manualStepH * wearWeightForLoad(State.ship.lastLoadFraction);
 
                 const manualFlowLh = State.ship.lastFuelFlowLh || 0;
                 if (manualFlowLh > 0) {
@@ -5676,9 +5990,13 @@ function refreshAnalyticsSidebar() {
                         + (physics.fuelFlowLh * simMult * deltaTime) / 3600;
                 }
 
-                // Run-hours, same step and same clock again. Predictive maintenance
-                // samples and ages the injected fault against this, never wall-clock.
-                State.ship.runHours = (State.ship.runHours || 0) + (simMult * deltaTime) / 3600;
+                // Run-hours, same step and same clock again. Condition monitoring
+                // samples and ages the injected fault against this, never wall-clock;
+                // wear-hours alongside it drive the component life table.
+                const stepH = (simMult * deltaTime) / 3600;
+                State.ship.runHours = (State.ship.runHours || 0) + stepH;
+                State.ship.wearHours = (State.ship.wearHours || 0)
+                    + stepH * wearWeightForLoad(physics.engineLoadFraction);
 
                 let safeTotalDistNM = isNaN(totalDistNM) || totalDistNM <= 0 ? 5.0 : totalDistNM;
                 let progressPerSecond = (actualKnots / Math.max(0.1, safeTotalDistNM)) / 3600;
@@ -6160,19 +6478,29 @@ function refreshAnalyticsSidebar() {
             const history = loadOperatorHistory();
             const daysEl = document.getElementById('inDaysSinceService');
             const failEl = document.getElementById('inFailureReports');
+            const hoursEl = document.getElementById('inHoursPerDay');
             if (daysEl) daysEl.value = history.daysSinceService;
             if (failEl) failEl.value = history.failureReports;
+            if (hoursEl) hoursEl.value = history.hoursPerDay;
 
             const persistHistory = () => {
                 saveOperatorHistory({
                     daysSinceService: Math.max(0, Number(daysEl?.value) || 0),
                     failureReports: Math.max(0, Number(failEl?.value) || 0),
+                    hoursPerDay: Math.max(0, Number(hoursEl?.value) || 0),
                 });
                 renderMaturityReadout();
+                // Hours per day is what turns wear-hours into months, so a change to
+                // it must re-resolve rather than wait out the poll interval.
+                State.componentLife.lastCallMs = 0;
+                refreshComponentLife();
             };
             daysEl?.addEventListener('change', persistHistory);
             failEl?.addEventListener('change', persistHistory);
+            hoursEl?.addEventListener('change', persistHistory);
             renderMaturityReadout();
+            renderComponentLife();
+            renderAnomalyLog();
 
             // Operating instructions. The driver.js tour walks the interface;
             // this is the version you can read at your own pace and scroll back in.

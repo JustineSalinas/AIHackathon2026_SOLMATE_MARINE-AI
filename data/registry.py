@@ -98,8 +98,11 @@ REGISTRY: dict[str, Dataset] = {
         caveats=[
             "Turbofan, not marine diesel. Used for the SHAPE of gradual multi-sensor "
             "degradation, not for any component-level claim about a boat engine.",
-            "Provides the pretraining signal that makes cold-start anomaly detection "
-            "possible at all; it is explicitly not a source of RUL predictions here.",
+            "Consumed by services/maintenance/train_rul.py, which demonstrates the RUL "
+            "METHOD on held-out turbofan units. It is explicitly not a source of RUL "
+            "predictions for a vessel: that output is wired to nothing, and the boat's "
+            "component figures come from published design lives in "
+            "services/maintenance/lifespan.py instead.",
         ],
     ),
     "open-meteo-weather-archive": Dataset(

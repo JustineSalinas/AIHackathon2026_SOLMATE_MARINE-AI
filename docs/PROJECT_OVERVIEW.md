@@ -43,11 +43,12 @@ the vessel.
 | **Route Optimization** | ✅ Built + tested | Geodesy, planner, depth/weather constraints, shared fuel cost |
 | **Predictive Maintenance (Phase 1)** | ✅ Built + tested | Anomaly detector (PCA + robust z-score ensemble) |
 | **Auditable Emissions Layer** | ✅ Built + tested | CO₂ accounting from the same burn figure |
-| **Advisory API** | ✅ Live | `POST /advise`, `/route`, `/maintenance`, `/health` |
+| **Advisory API** | ✅ Live | `POST /advise`, `/route`, `/maintenance`, `/maintenance/component-life`, `/health` |
 | **Bridge display (Next.js)** | ✅ Built | Simulator console, 4 POV modes incl. procedural helm view |
 | **Contracts → TypeScript** | ✅ Built | Pydantic models are the single source of truth; TS generated |
 | **Route learned forecaster (TFT)** | 🟡 Gated | Runs on an honest analytic weather field today; TFT/GBM is the upgrade |
-| **Predictive Maintenance Phase 2 (RUL)** | ⬜ Not started | Contract + maturity gate exist; RUL model is roadmap |
+| **Component design life (P.P.S.)** | ✅ Built + tested | Published design lives divided by measured wear-hours. No model: a committed table and one division |
+| **Predictive Maintenance Phase 2 (RUL)** | 🟡 Method proven | RUL demonstrated on C-MAPSS at 14.58 cycles RMSE. Wired to nothing — a vessel RUL model still needs vessel failure history |
 | **Safety cutoffs** | ⬜ Planned | Rule-based, deterministic, no ML |
 | **Pitch deck** | 🟡 Scaffolded | `docs/DECK.md` — slide-by-slide content, not yet a PPT |
 | **Video screencast** | ⬜ Not started | Required deliverable |
@@ -259,7 +260,8 @@ it is in Python.
 
 **Engineering (nice-to-have / post-MVP):**
 - [ ] Learned route forecaster (TFT, or gradient-boosted fallback) — the D5 gate.
-- [ ] Predictive Maintenance Phase 2 (RUL) — methodology demo on C-MAPSS.
+- [x] Predictive Maintenance Phase 2 (RUL) — methodology demo on C-MAPSS. `services/maintenance/train_rul.py`, 14.58 cycles RMSE on 100 held-out engines.
+- [ ] Phase 2 RUL for a vessel — blocked on labelled failure history, not on modelling.
 - [ ] Wire GEBCO bathymetry into the route depth constraint.
 - [ ] Bridge display: consume `/route` and `/maintenance` (types already generated).
 - [ ] Rule-based safety cutoffs (`services/safety/`).
