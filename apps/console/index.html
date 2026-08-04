@@ -1635,15 +1635,32 @@
             <div class="p-4 sm:p-6 flex-1 overflow-y-auto flex flex-col lg:flex-row gap-5 sm:gap-6 bg-slate-950">
                 <!-- X-Ray (Left Column) -->
                 <div class="flex-1 min-w-0 flex flex-col min-h-[420px]">
-                   <div id="tabContentXray" class="space-y-4 flex-1 min-h-0 flex flex-col w-full">
-                    <div class="bg-slate-900/90 rounded-xl p-4 border border-orange-500/20 shadow-lg shadow-black/40 backdrop-blur-sm flex-1 flex flex-col min-h-[380px]">
+                   <!-- Scrolls, so a taller hull card pushes the diagnostics card down
+                        instead of being painted over by it. Without this the two
+                        overlapped by 118 px on a short viewport. -->
+                   <div id="tabContentXray" class="space-y-4 flex-1 min-h-0 overflow-y-auto flex flex-col w-full">
+                    <!-- The hull's height budget lives HERE, on the card, not on the
+                         panel inside it: a min-height on the panel simply burst out of
+                         this box and overlapped the card below. 480 px carries the
+                         header, the enlarged hull and the isolation filters. -->
+                    <div class="bg-slate-900/90 rounded-xl p-4 border border-orange-500/20 shadow-lg shadow-black/40 backdrop-blur-sm flex-1 flex flex-col min-h-[540px]">
                         <div class="text-xs font-bold text-orange-400 border-b border-orange-500/15 pb-2 flex items-center justify-between mb-3 shrink-0">
                             <span class="flex items-center gap-2"><i class="fa-solid fa-ship text-orange-500"></i>Vessel Hull & Propulsion X-Ray</span>
                             <span class="text-xs text-amber-400 font-mono flex items-center gap-1.5"><i class="fa-solid fa-circle text-[6px] text-emerald-400 animate-pulse"></i> LIVE HULL SCAN</span>
                         </div>
-                        <div class="flex-1 relative bg-slate-950 rounded-xl border border-orange-500/20 overflow-hidden flex items-center justify-center p-6 shadow-inner">
-                            <!-- X-Ray Boat Visual -->
-                            <div class="relative w-32 h-72 border-2 border-orange-500/40 rounded-[50%_50%_10%_10%/15%_15%_5%_5%] bg-slate-950/90 shadow-[0_0_30px_rgba(249,115,22,0.18)] overflow-hidden">
+                        <!-- The hull was being CLIPPED, not merely small: at 288 px tall in a
+                             261 px content box the engine block, shaft and propeller were cut
+                             off by the panel edge and the isolation filters sat on top of what
+                             was left. The room comes from the card's min-height above; this
+                             panel just fills it. -->
+                        <div class="flex-1 relative bg-slate-950 rounded-xl border border-orange-500/20 overflow-hidden flex items-center justify-center pt-4 px-4 pb-14 shadow-inner">
+                            <!-- X-Ray Boat Visual
+                                 Enlarged with a transform rather than by rewriting every child's
+                                 width, offset and height: the hull holds nine absolutely-placed
+                                 components whose positions are tuned to a 128x288 box, and
+                                 scaling the box alone would have left them where they were.
+                                 A transform scales the whole assembly and keeps it in proportion. -->
+                            <div class="relative w-32 h-72 scale-125 origin-center border-2 border-orange-500/40 rounded-[50%_50%_10%_10%/15%_15%_5%_5%] bg-slate-950/90 shadow-[0_0_30px_rgba(249,115,22,0.18)] overflow-hidden">
                                 
                                 <!-- Internal Grid lines -->
                                 <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTEwIDBMMCAwTDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNDksMTE1LDIyLDAuMDgpIiBzdHJva2Utd2lkdGg9IjAuNSIvPjwvc3ZnPg==')] opacity-60"></div>
