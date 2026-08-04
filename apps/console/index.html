@@ -1654,104 +1654,125 @@
                              was left. The room comes from the card's min-height above; this
                              panel just fills it. -->
                         <div class="flex-1 relative bg-slate-950 rounded-xl border border-orange-500/20 overflow-hidden flex items-center justify-center pt-6 px-4 pb-16 shadow-inner">
-                            <!-- Vessel side view.
-                                 Rebuilt from the vertical top-down hull, which used 128 px of a
-                                 638 px panel and left ~500 px empty either side. Side-on uses
-                                 that width, and gives each system a block big enough to carry
-                                 its own design-life bar -- so the drawing reports the P.P.S.
-                                 table rather than decorating it.
+                            <!-- Vessel side view, laid out the way the boat is built.
+                                 Machinery below the deck line and low in the hull, wheelhouse the
+                                 only thing above it, shaft running aft to the propeller, tanks
+                                 amidships, electrical just forward of the engine. Each system
+                                 carries its own design-life bar directly beneath it.
 
-                                 EVERY xray* id from the previous hull is preserved. 48 places in
-                                 main.js drive these elements -- propeller spin, isolation
-                                 filters, fuel levels, radar sweep -- and renaming any of them
-                                 would silently kill an animation rather than fail loudly. -->
-                            <div class="relative w-full max-w-[620px] aspect-[62/21]">
+                                 EVERY xray* id is preserved -- 48 places in main.js drive these
+                                 elements, and renaming one would kill an animation silently. -->
+                            <div class="w-full flex flex-col items-center gap-2">
 
-                                <!-- Hull outline. SVG rather than a CSS clip-path so the stroke
-                                     survives on the raked bow; a clipped border loses its
-                                     diagonal edge. -->
-                                <svg viewBox="0 0 620 210" class="absolute inset-0 w-full h-full" aria-hidden="true">
-                                    <defs>
-                                        <pattern id="hullGrid" width="14" height="14" patternUnits="userSpaceOnUse">
-                                            <path d="M14 0L0 0L0 14" fill="none" stroke="rgba(249,115,22,0.10)" stroke-width="0.6"/>
-                                        </pattern>
-                                        <clipPath id="hullClip">
-                                            <path d="M24 52 L440 30 L600 105 L440 180 L24 158 Z"/>
-                                        </clipPath>
-                                    </defs>
-                                    <rect x="0" y="0" width="620" height="210" fill="url(#hullGrid)" clip-path="url(#hullClip)"/>
-                                    <path d="M24 52 L440 30 L600 105 L440 180 L24 158 Z"
-                                          fill="rgba(2,6,23,0.92)" stroke="rgba(249,115,22,0.45)" stroke-width="2.5"/>
-                                    <path d="M24 78 L452 62" stroke="rgba(249,115,22,0.22)" stroke-width="1.5" fill="none"/>
-                                    <text x="558" y="112" fill="rgba(148,163,184,0.75)" font-size="11" font-family="ui-monospace,monospace">BOW</text>
-                                </svg>
-
-                                <!-- Propulsion: shaft and propeller at the stern, plus the block
-                                     carrying the shaft/propeller/rudder design-life score. -->
-                                <div id="xrayShaft" class="absolute left-[6.5%] top-1/2 -translate-y-1/2 w-[9%] h-[3px] bg-emerald-600 transition-colors"></div>
-                                <div id="xrayPropeller" class="absolute left-[3%] top-1/2 -translate-y-1/2 w-[2.2%] h-[26%] bg-emerald-400 rounded-full shadow-[0_0_8px_#10b981] transition-colors"></div>
-
-                                <div id="hullBlock-propulsion" class="absolute left-[7.5%] bottom-[13%] w-[13%] rounded-md border border-emerald-500/50 bg-emerald-500/10 px-1 py-1">
-                                    <div class="text-[0.55rem] text-emerald-300 font-mono tracking-wider text-center leading-tight">DRIVE</div>
-                                    <div class="h-1 mt-1 bg-slate-800 rounded-full overflow-hidden">
-                                        <div data-life-bar class="h-full bg-emerald-500 transition-all duration-700" style="width:100%"></div>
+                                <!-- Instrument strip. Was an absolutely-positioned box sitting on
+                                     top of the drawing, which put "VESSEL SPEED" across the sheer
+                                     line. A readout and a schematic should not share pixels. -->
+                                <div class="w-full max-w-[620px] grid grid-cols-3 gap-2 text-xs font-mono">
+                                    <div class="bg-slate-950/90 border border-orange-500/25 rounded px-2 py-1 flex justify-between gap-2">
+                                        <span class="text-orange-400 font-semibold">ENG LOAD</span>
+                                        <span><span id="xrayEngLoad" class="text-white">--</span><span class="text-slate-500">%</span></span>
+                                    </div>
+                                    <div class="bg-slate-950/90 border border-amber-500/25 rounded px-2 py-1 flex justify-between gap-2">
+                                        <span class="text-amber-400 font-semibold">FUEL REM</span>
+                                        <span><span id="xrayFuel" class="text-white">--</span><span class="text-slate-500">L</span></span>
+                                    </div>
+                                    <div class="bg-slate-950/90 border border-slate-600/40 rounded px-2 py-1 flex justify-between gap-2">
+                                        <span class="text-slate-300 font-semibold">SPEED</span>
+                                        <span><span id="xraySpeed" class="text-orange-400 font-bold">--</span><span class="text-slate-500">kts</span></span>
                                     </div>
                                 </div>
 
-                                <!-- Engine room -->
-                                <div id="xrayEngine" class="absolute left-[23%] top-[36%] w-[17%] h-[34%] border border-orange-500/60 bg-orange-500/20 rounded-lg flex flex-col items-center justify-center transition-colors shadow-[0_0_12px_rgba(249,115,22,0.25)]">
-                                    <i id="xrayEngineIcon" class="fa-solid fa-fan text-orange-400 text-sm"></i>
-                                    <div class="text-[0.6rem] text-white mt-0.5 font-mono font-bold tracking-wider">ENGINE</div>
-                                </div>
-                                <div id="hullBlock-engine" class="absolute left-[23%] bottom-[9%] w-[17%] rounded-md border border-orange-500/40 bg-orange-500/10 px-1 py-0.5">
-                                    <div class="h-1 bg-slate-800 rounded-full overflow-hidden">
-                                        <div data-life-bar class="h-full bg-emerald-500 transition-all duration-700" style="width:100%"></div>
-                                    </div>
-                                </div>
+                                <div class="relative w-full max-w-[620px] aspect-[62/21]">
 
-                                <!-- Fuel: port and starboard tanks -->
-                                <div class="absolute left-[44%] top-[38%] w-[12%] h-[30%] border border-amber-500/60 bg-amber-500/15 rounded-md flex gap-[3px] p-[3px]">
-                                    <div class="flex-1 bg-slate-900/70 rounded-sm overflow-hidden flex flex-col justify-end">
-                                        <div id="xrayFuelLevelL" class="w-full bg-gradient-to-t from-orange-500 to-amber-400 transition-all duration-1000" style="height:100%"></div>
-                                    </div>
-                                    <div class="flex-1 bg-slate-900/70 rounded-sm overflow-hidden flex flex-col justify-end">
-                                        <div id="xrayFuelLevelR" class="w-full bg-gradient-to-t from-orange-500 to-amber-400 transition-all duration-1000" style="height:100%"></div>
-                                    </div>
-                                </div>
-                                <div class="absolute left-[44%] top-[30%] w-[12%] text-[0.55rem] text-amber-300 font-mono tracking-widest text-center">FUEL</div>
-                                <div id="hullBlock-fuel" class="absolute left-[44%] bottom-[9%] w-[12%] rounded-md border border-amber-500/40 bg-amber-500/10 px-1 py-0.5">
-                                    <div class="h-1 bg-slate-800 rounded-full overflow-hidden">
-                                        <div data-life-bar class="h-full bg-emerald-500 transition-all duration-700" style="width:100%"></div>
-                                    </div>
-                                </div>
+                                    <!-- Hull outline. SVG rather than a CSS clip-path so the stroke
+                                         survives on the raked bow. -->
+                                    <svg viewBox="0 0 620 210" class="absolute inset-0 w-full h-full" aria-hidden="true">
+                                        <defs>
+                                            <pattern id="hullGrid" width="14" height="14" patternUnits="userSpaceOnUse">
+                                                <path d="M14 0L0 0L0 14" fill="none" stroke="rgba(249,115,22,0.10)" stroke-width="0.6"/>
+                                            </pattern>
+                                            <clipPath id="hullClip">
+                                                <path d="M24 52 L440 30 L600 105 L440 180 L24 158 Z"/>
+                                            </clipPath>
+                                        </defs>
+                                        <rect x="0" y="0" width="620" height="210" fill="url(#hullGrid)" clip-path="url(#hullClip)"/>
+                                        <path d="M24 52 L440 30 L600 105 L440 180 L24 158 Z"
+                                              fill="rgba(2,6,23,0.92)" stroke="rgba(249,115,22,0.45)" stroke-width="2.5"/>
+                                        <!-- Deck line. Everything below it is machinery space. -->
+                                        <path d="M24 78 L452 62" stroke="rgba(249,115,22,0.28)" stroke-width="1.5" fill="none"/>
+                                        <!-- Waterline, for scale. -->
+                                        <path d="M24 118 L470 104" stroke="rgba(56,189,248,0.20)" stroke-width="1" stroke-dasharray="5 5" fill="none"/>
+                                        <!-- Rudder, abaft the propeller. -->
+                                        <path d="M40 132 L40 168 L52 160 L52 128 Z" fill="rgba(16,185,129,0.18)" stroke="rgba(16,185,129,0.5)" stroke-width="1.5"/>
+                                        <text x="556" y="112" fill="rgba(148,163,184,0.75)" font-size="11" font-family="ui-monospace,monospace">BOW</text>
+                                        <text x="30" y="196" fill="rgba(148,163,184,0.5)" font-size="9" font-family="ui-monospace,monospace">STERN</text>
+                                    </svg>
 
-                                <!-- Electrical system: the sketch's E.S. -->
-                                <div id="xrayGenerator" class="absolute left-[60%] top-[40%] w-[8%] h-[24%] border border-sky-500/50 bg-sky-500/15 rounded-md flex items-center justify-center shadow-[0_0_8px_rgba(56,189,248,0.2)] transition-colors">
-                                    <i class="fa-solid fa-bolt text-sky-300 text-xs"></i>
-                                </div>
-                                <div class="absolute left-[60%] top-[31%] w-[8%] text-[0.55rem] text-sky-300 font-mono tracking-widest text-center">E.S.</div>
-                                <div id="hullBlock-electrical" class="absolute left-[60%] bottom-[11%] w-[8%] rounded-md border border-sky-500/40 bg-sky-500/10 px-1 py-0.5">
-                                    <div class="h-1 bg-slate-800 rounded-full overflow-hidden">
-                                        <div data-life-bar class="h-full bg-emerald-500 transition-all duration-700" style="width:100%"></div>
-                                    </div>
-                                </div>
+                                    <!-- Propeller and shaft. The shaft runs aft from the engine and
+                                         low, which is where it sits on a single-screw boat. -->
+                                    <div id="xrayPropeller" data-iso="eng" class="absolute left-[2.6%] top-[57%] -translate-y-1/2 w-[1.8%] h-[22%] bg-emerald-400 rounded-full shadow-[0_0_8px_#10b981] transition-colors"></div>
+                                    <div id="xrayShaft" data-iso="eng" class="absolute left-[5%] top-[57%] -translate-y-1/2 w-[17%] h-[3px] bg-emerald-600 transition-colors"></div>
 
-                                <!-- Bridge and radar, above the deck line -->
-                                <div id="xrayBridge" class="absolute left-[30%] top-[20%] w-[16%] h-[13%] border border-emerald-500/50 bg-emerald-500/15 rounded-t-lg flex items-center justify-center shadow-[0_0_12px_rgba(16,185,129,0.2)] transition-colors">
-                                    <div class="text-[0.6rem] text-emerald-300 font-mono font-bold tracking-wider">BRIDGE</div>
-                                </div>
-                                <div id="xrayRadarRing" class="absolute left-[47.5%] top-[21%] w-[3.6%] aspect-square rounded-full border border-emerald-500/50 bg-emerald-500/10 flex items-center justify-center transition-colors">
-                                    <div id="xrayRadarLine" class="w-1/2 h-[1px] bg-emerald-400 absolute top-1/2 left-1/2 origin-left shadow-[0_0_6px_#10b981] transition-colors"></div>
+                                    <!-- Engine: aft of amidships, sitting low on the keel. -->
+                                    <div id="xrayEngine" data-iso="eng" class="absolute left-[22%] top-[44%] w-[16%] h-[26%] border border-orange-500/60 bg-orange-500/20 rounded-md flex flex-col items-center justify-center transition-colors shadow-[0_0_12px_rgba(249,115,22,0.25)]">
+                                        <i id="xrayEngineIcon" class="fa-solid fa-fan text-orange-400 text-sm"></i>
+                                        <div class="text-[0.58rem] text-white mt-0.5 font-mono font-bold tracking-wider">ENGINE</div>
+                                    </div>
+                                    <div id="hullBlock-engine" data-iso="eng" class="absolute left-[22%] top-[71.5%] w-[16%]">
+                                        <div class="h-1 bg-slate-800 rounded-full overflow-hidden">
+                                            <div data-life-bar class="h-full bg-emerald-500 transition-all duration-700" style="width:100%"></div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Electrical panel and batteries, just forward of the engine. -->
+                                    <div data-iso="eng" class="absolute left-[40%] top-[38%] w-[9%] text-[0.52rem] text-sky-300 font-mono tracking-widest text-center">E.S.</div>
+                                    <div id="xrayGenerator" data-iso="eng" class="absolute left-[40%] top-[45%] w-[9%] h-[20%] border border-sky-500/50 bg-sky-500/15 rounded-md flex items-center justify-center shadow-[0_0_8px_rgba(56,189,248,0.2)] transition-colors">
+                                        <i class="fa-solid fa-bolt text-sky-300 text-xs"></i>
+                                    </div>
+                                    <div id="hullBlock-electrical" data-iso="eng" class="absolute left-[40%] top-[66.5%] w-[9%]">
+                                        <div class="h-1 bg-slate-800 rounded-full overflow-hidden">
+                                            <div data-life-bar class="h-full bg-emerald-500 transition-all duration-700" style="width:100%"></div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Fuel tanks amidships, port and starboard, below the deck. -->
+                                    <div data-iso="fuel" class="absolute left-[52%] top-[38%] w-[13%] text-[0.52rem] text-amber-300 font-mono tracking-widest text-center">FUEL</div>
+                                    <div data-iso="fuel" class="absolute left-[52%] top-[45%] w-[13%] h-[24%] flex gap-[3px]">
+                                        <div class="flex-1 border border-amber-500/60 bg-amber-500/15 rounded-sm overflow-hidden flex flex-col justify-end transition-colors">
+                                            <div id="xrayFuelLevelL" class="w-full bg-gradient-to-t from-orange-500 to-amber-400 transition-all duration-1000" style="height:100%"></div>
+                                        </div>
+                                        <div class="flex-1 border border-amber-500/60 bg-amber-500/15 rounded-sm overflow-hidden flex flex-col justify-end transition-colors">
+                                            <div id="xrayFuelLevelR" class="w-full bg-gradient-to-t from-orange-500 to-amber-400 transition-all duration-1000" style="height:100%"></div>
+                                        </div>
+                                    </div>
+                                    <div id="hullBlock-fuel" data-iso="fuel" class="absolute left-[52%] top-[70.5%] w-[13%]">
+                                        <div class="h-1 bg-slate-800 rounded-full overflow-hidden">
+                                            <div data-life-bar class="h-full bg-emerald-500 transition-all duration-700" style="width:100%"></div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Drive train: shaft, stern tube, propeller and rudder, scored
+                                         together as one system at the stern. -->
+                                    <div id="hullBlock-propulsion" data-iso="eng" class="absolute left-[6%] top-[66%] w-[14%] rounded border border-emerald-500/40 bg-emerald-500/10 px-1 py-0.5">
+                                        <div class="text-[0.52rem] text-emerald-300 font-mono tracking-wider text-center leading-none">DRIVE</div>
+                                        <div class="h-1 mt-0.5 bg-slate-800 rounded-full overflow-hidden">
+                                            <div data-life-bar class="h-full bg-emerald-500 transition-all duration-700" style="width:100%"></div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Wheelhouse: the only structure above the deck line, set
+                                         forward as it is on a coastal passenger boat. -->
+                                    <div id="xrayBridge" data-iso="nav" class="absolute left-[56%] top-[18%] w-[15%] h-[12%] border border-emerald-500/50 bg-emerald-500/15 rounded-t-md flex items-center justify-center shadow-[0_0_12px_rgba(16,185,129,0.2)] transition-colors">
+                                        <div class="text-[0.56rem] text-emerald-300 font-mono font-bold tracking-wider">BRIDGE</div>
+                                    </div>
+                                    <div id="xrayRadarRing" data-iso="nav" class="absolute left-[61.5%] top-[9%] w-[3.4%] aspect-square rounded-full border border-emerald-500/50 bg-emerald-500/10 flex items-center justify-center transition-colors">
+                                        <div id="xrayRadarLine" class="w-1/2 h-[1px] bg-emerald-400 absolute top-1/2 left-1/2 origin-left shadow-[0_0_6px_#10b981] transition-colors"></div>
+                                    </div>
+                                    <!-- Mast, so the radar is standing on something. -->
+                                    <div data-iso="nav" class="absolute left-[63%] top-[13%] w-[1px] h-[5%] bg-emerald-500/40"></div>
                                 </div>
                             </div>
 
-                            <!-- Overlay Stats HUD -->
-                            <div class="absolute top-3 left-3 text-xs font-mono space-y-1.5 bg-slate-950/90 p-2.5 rounded-lg border border-orange-500/30 shadow-lg backdrop-blur-md text-slate-200">
-                                <div class="text-orange-400 flex justify-between gap-3 font-semibold"><span>ENG LOAD:</span> <span id="xrayEngLoad" class="text-white">--</span>%</div>
-                                <div class="text-amber-400 flex justify-between gap-3 font-semibold"><span>FUEL REM:</span> <span id="xrayFuel" class="text-white">--</span>L</div>
-                                <div class="text-slate-300 flex justify-between gap-3 font-semibold"><span>VESSEL SPEED:</span> <span id="xraySpeed" class="text-orange-400 font-bold">--</span>kts</div>
-                            </div>
-                            
                             <!-- Isolation Filters -->
                             <div class="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 bg-slate-950/80 backdrop-blur border border-slate-700/50 p-1.5 rounded-lg">
                                 <button id="btnIsoAll" class="text-xs font-bold px-2 py-1 rounded bg-orange-500 text-white cursor-pointer transition-colors border border-orange-400">ALL</button>

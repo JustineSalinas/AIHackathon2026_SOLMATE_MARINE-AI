@@ -2647,10 +2647,15 @@ const MAINTENANCE_INTERVAL_MS = 15000;
  * colours.
  */
 const XRAY_LAYOUT = {
-    engine: "absolute left-[23%] top-[36%] w-[17%] h-[34%] rounded-lg flex flex-col items-center justify-center transition-colors",
-    propeller: "absolute left-[3%] top-1/2 -translate-y-1/2 w-[2.2%] h-[26%] rounded-full transition-colors",
-    shaft: "absolute left-[6.5%] top-1/2 -translate-y-1/2 w-[9%] h-[3px] transition-colors",
-    generator: "absolute left-[60%] top-[40%] w-[8%] h-[24%] rounded-md flex items-center justify-center transition-colors",
+    engine: "absolute left-[22%] top-[44%] w-[16%] h-[26%] rounded-md flex flex-col items-center justify-center transition-colors",
+    propeller: "absolute left-[2.6%] top-[57%] -translate-y-1/2 w-[1.8%] h-[22%] rounded-full transition-colors",
+    shaft: "absolute left-[5%] top-[57%] -translate-y-1/2 w-[17%] h-[3px] transition-colors",
+    generator: "absolute left-[40%] top-[45%] w-[9%] h-[20%] rounded-md flex items-center justify-center transition-colors",
+    // The tank is a flex column its fill sits at the bottom of. Recolouring it
+    // used to rewrite the whole className to `absolute bottom-28 left-2 w-4 h-16`
+    // -- the old top-down hull's geometry -- which stopped it being a container
+    // at all and sent the fuel bars flying to the top of the panel.
+    fuelTank: "flex-1 rounded-sm overflow-hidden flex flex-col justify-end transition-colors",
 };
 
 const MAINTENANCE_SAMPLE_RUN_HOURS = 10 / 3600;
@@ -5247,8 +5252,8 @@ function refreshAnalyticsSidebar() {
                     else if (fuelPercent < 30) fClass = "border border-amber-500/60 bg-amber-500/20";
                     else fClass = "border border-emerald-500/60 bg-emerald-500/20";
                     
-                    fuelContainerL.className = `absolute bottom-28 left-2 w-4 h-16 ${fClass} rounded-md overflow-hidden flex flex-col justify-end transition-colors`;
-                    fuelContainerR.className = `absolute bottom-28 right-2 w-4 h-16 ${fClass} rounded-md overflow-hidden flex flex-col justify-end transition-colors`;
+                    fuelContainerL.className = `${XRAY_LAYOUT.fuelTank} ${fClass}`;
+                    fuelContainerR.className = `${XRAY_LAYOUT.fuelTank} ${fClass}`;
                 }
 
                 // Engine Room Color Status
@@ -7331,35 +7336,33 @@ function refreshAnalyticsSidebar() {
                     });
                 };
 
-                const applyIsoFocus = (focusBtn, highlightIds) => {
+                /**
+                 * Fade every system except the one selected.
+                 *
+                 * Dims the tagged elements themselves, not `el.parentElement`. The
+                 * previous version faded parents, and the engine block's parent is
+                 * the hull -- so choosing FUEL or NAV dropped the whole drawing to
+                 * 20% opacity, including the system being isolated. Selecting a
+                 * filter made the boat disappear.
+                 *
+                 * `data-iso` lives on the markup beside the geometry, so moving a
+                 * component around the hull cannot quietly change which filter owns
+                 * it the way DOM nesting did.
+                 */
+                const applyIsoFocus = (focusBtn, system) => {
                     resetIsoButtons();
                     focusBtn.className = "text-xs font-bold px-2 py-1 rounded bg-orange-500 text-white cursor-pointer transition-colors border border-orange-400";
-                    
-                    const allIds = ['xrayEngine', 'xrayFuelLevelL', 'xrayFuelLevelR', 'xrayRadarLine', 'xrayPropeller'];
-                    
-                    if (highlightIds === 'ALL') {
-                        allIds.forEach(id => {
-                            const el = document.getElementById(id);
-                            if (el && el.parentElement) el.parentElement.style.opacity = '1';
-                        });
-                    } else {
-                        allIds.forEach(id => {
-                            const el = document.getElementById(id);
-                            if (el && el.parentElement) {
-                                if (highlightIds.includes(id)) {
-                                    el.parentElement.style.opacity = '1';
-                                } else {
-                                    el.parentElement.style.opacity = '0.2';
-                                }
-                            }
-                        });
-                    }
+
+                    document.querySelectorAll('[data-iso]').forEach(el => {
+                        el.style.transition = 'opacity 250ms ease';
+                        el.style.opacity = (system === 'ALL' || el.dataset.iso === system) ? '1' : '0.18';
+                    });
                 };
 
                 btnIsoAll.addEventListener('click', () => applyIsoFocus(btnIsoAll, 'ALL'));
-                btnIsoEng.addEventListener('click', () => applyIsoFocus(btnIsoEng, ['xrayEngine', 'xrayPropeller']));
-                btnIsoFuel.addEventListener('click', () => applyIsoFocus(btnIsoFuel, ['xrayFuelLevelL', 'xrayFuelLevelR']));
-                btnIsoNav.addEventListener('click', () => applyIsoFocus(btnIsoNav, ['xrayRadarLine']));
+                btnIsoEng.addEventListener('click', () => applyIsoFocus(btnIsoEng, 'eng'));
+                btnIsoFuel.addEventListener('click', () => applyIsoFocus(btnIsoFuel, 'fuel'));
+                btnIsoNav.addEventListener('click', () => applyIsoFocus(btnIsoNav, 'nav'));
             }
 
             // Analytics Modal logic
