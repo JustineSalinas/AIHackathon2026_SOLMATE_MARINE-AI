@@ -95,6 +95,63 @@ html, body {
     color: #cfe0f5 !important;
 }
 
+/* Collapsed state: the credit rests as the small disc in the BOTTOM-RIGHT corner
+   and reveals on hover, click or keyboard focus.
+
+   Esri's terms and OpenSeaMap's ODbL both REQUIRE this credit while their tiles
+   are being fetched, so it is made quiet, never removed -- and the rules above
+   still apply once it is open, which is where the 3.61:1 contrast measurement
+   has to hold.
+
+   Measured, not assumed: MapLibre 3.6.2 ships the compact control already
+   carrying `maplibregl-compact-show` (141 px wide, fully expanded, at rest), so
+   an earlier `:not(.maplibregl-compact-show)` version of this rule never
+   matched. Targeting the inner element works whether the control renders as a
+   <div> or a <details>, and the !important is needed to beat MapLibre's own
+   `.maplibregl-compact-show .inner { display: block }`. */
+.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-inner {
+    display: none !important;
+}
+.maplibregl-ctrl-attrib.maplibregl-compact:hover .maplibregl-ctrl-attrib-inner,
+.maplibregl-ctrl-attrib.maplibregl-compact:focus-within .maplibregl-ctrl-attrib-inner,
+.maplibregl-ctrl-attrib.maplibregl-compact[open] .maplibregl-ctrl-attrib-inner {
+    display: block !important;
+}
+.maplibregl-ctrl-attrib.maplibregl-compact {
+    background: rgba(2, 6, 23, 0.6) !important;
+    opacity: 0.6;
+    transition: opacity 120ms ease;
+}
+.maplibregl-ctrl-attrib.maplibregl-compact:hover,
+.maplibregl-ctrl-attrib.maplibregl-compact:focus-within {
+    opacity: 1;
+    background: rgba(2, 6, 23, 0.85) !important;
+}
+
+/* Pin the credit to the VIEWPORT's bottom-right, not the map container's.
+   Both map libraries anchor their control stack inside their own container, so
+   whichever map is shorter than the screen -- or is swapped out on a view change
+   -- leaves the credit stranded mid-screen. Fixed positioning makes the corner
+   the corner. Bottom-left is left clear for the compass. */
+.maplibregl-ctrl-bottom-right,
+.leaflet-bottom.leaflet-right {
+    position: fixed !important;
+    right: 8px !important;
+    bottom: 8px !important;
+    left: auto !important;
+    top: auto !important;
+    z-index: 1200;
+    pointer-events: none;
+}
+.maplibregl-ctrl-bottom-right > *,
+.leaflet-bottom.leaflet-right > * {
+    pointer-events: auto;
+}
+/* z-1200 sits below the modals (z-4000) and above the map chrome, so the credit
+   layers correctly without needing a rule that hides it. An earlier
+   `:has(~ * [aria-modal="true"])` attempt here was never verified and matched
+   nothing; it has been removed rather than left as decoration. */
+
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--color-hairline); }
 ::-webkit-scrollbar-thumb { background: #f97316; border-radius: 3px; }
@@ -164,11 +221,15 @@ input[type=range]:focus { outline: none; }
     color: var(--color-ink);
 }
 
-.brand__mark {
-    width: 1.75rem;
+/* The supplied MARINE>I lockup replaces the mark+text pair in the dashboard
+   header. Height-driven, width auto: the source is 994x342 (2.91), and pinning
+   width instead lets the row squash it. The loading screen is deliberately NOT
+   affected -- it keeps its own lockup. */
+.brand__lockup {
     height: 1.75rem;
-    flex: none;
-    color: var(--color-advisory);
+    width: auto;
+    max-width: 40vw;
+    display: block;
 }
 
 .brand__word {
@@ -181,7 +242,7 @@ input[type=range]:focus { outline: none; }
 }
 
 @media (min-width: 768px) {
-    .brand__mark { width: 2rem; height: 2rem; }
+    .brand__lockup { height: 1.5rem; max-width: none; }
     .brand__word { font-size: 1.1875rem; }
 }
 

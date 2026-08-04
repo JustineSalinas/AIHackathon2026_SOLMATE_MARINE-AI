@@ -167,7 +167,7 @@ Declared in `data/registry.py` (the code refuses to fetch anything undeclared).
 | Source | Role | Licence |
 |---|---|---|
 | **UCI — Condition Based Maintenance of Naval Propulsion Plants** | Fuel-wear model (used as a **documented gas-turbine proxy**; only the dimensionless wear penalty transfers) | CC BY 4.0 (UCI ML Repository) |
-| **NASA C-MAPSS** (turbofan degradation) | Predictive-maintenance methodology / pretraining signal | U.S. Government work — public domain |
+| **NASA C-MAPSS** (turbofan degradation) | Registered and fetchable, but **consumed by nothing today** — the intended Phase 2 (RUL) corpus. It does **not** pretrain the Phase 1 detector | U.S. Government work — public domain |
 | **Published marine-diesel BSFC part-load data** | Healthy-burn curve in the fuel model | Literature (cited) |
 | **Open-Meteo Marine** | Wind / wave / current forecast (route) | CC BY 4.0, no API key |
 | **GEBCO bathymetry** | Depth constraint *(intended — **not yet wired**; analytic depth today)* | Open |
@@ -181,6 +181,12 @@ Declared in `data/registry.py` (the code refuses to fetch anything undeclared).
 - **FEMTO/PRONOSTIA is named in our profile but deliberately NOT used** — it's
   25.6 kHz bench vibration and the retrofit IMU logs at ~1 Hz (3–4 orders of
   magnitude too slow). Do not list it as a source.
+- **C-MAPSS pretrains nothing.** `git grep cmapss -- '*.py'` returns
+  `data/registry.py` and nothing else; there is no `services/maintenance/train.py`.
+  The Phase 1 detector fits `VesselBaseline` at runtime. This claim has now been
+  found and corrected three times in three different documents — if you are about
+  to write it again, check `docs/DATA.md`, `docs/DEVIATIONS.md` and this file
+  together.
 - **Google/Bing/Esri satellite tiles were rejected** — their terms forbid reuse
   outside their own APIs; the brief grades "licensed or public data only."
 - **Claude (`claude-haiku-4-5`, Anthropic API)** is used for advisory *phrasing
@@ -201,7 +207,7 @@ technical profile, why, and what it costs. Highlights:
 |---|---|---|
 | Fuel burn learned end-to-end by XGBoost | **Hybrid**: physics for conditions→power, XGBoost for wear→fuel | No dataset varies weather/load |
 | "Public marine-diesel datasets" | UCI **gas turbine** as documented proxy | No public diesel dataset at needed resolution |
-| FEMTO + C-MAPSS pretraining | **C-MAPSS only** | FEMTO is 25.6 kHz; IMU is ~1 Hz |
+| FEMTO + C-MAPSS pretraining | **Neither** — the detector fits each vessel's own baseline | FEMTO is 25.6 kHz vs a ~1 Hz IMU; a turbofan's wear modes are not a marine diesel's |
 | TensorFlow Lite (edge) | **ONNX Runtime** | Native export path; 85 MB vs 358 MB serving |
 | TimescaleDB | **Supabase Postgres** | Managed free tier + public URL required |
 | PAGASA + OpenWeather | **Open-Meteo Marine** | PAGASA has no public API; marine vars free |

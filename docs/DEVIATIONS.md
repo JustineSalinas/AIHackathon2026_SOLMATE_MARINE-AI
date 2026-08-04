@@ -413,9 +413,9 @@ Exposure deliberately does **not** feed the anomaly score, and
 not a fault; if it raised the score, every busy crossing would light the health
 strip and the crew would learn to ignore it.
 
-On **G** specifically: row 3 of the deviations table above says "Dropped; NASA
-C-MAPSS only", which reads as though C-MAPSS pretrains the detector. It does not.
-The Phase 1 detector learns each vessel's own normal — which is the more
+On **G** specifically: row 3 of the deviations table above used to read "Dropped;
+NASA C-MAPSS only", which sounds like C-MAPSS pretrains the detector. It does not,
+and the row has been reworded. The Phase 1 detector learns each vessel's own normal — which is the more
 defensible design, since a turbofan's degradation modes are not a marine
 diesel's — but the profile's claim of pretraining is unmet either way, and the
 honest thing is to say so rather than let the dataset citation imply otherwise.

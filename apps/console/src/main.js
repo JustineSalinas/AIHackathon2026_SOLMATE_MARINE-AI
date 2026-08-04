@@ -126,7 +126,6 @@ import "driver.js/dist/driver.css";
                 lastCallMs: 0,
                 inFlight: false,
             },
-            aiWaypoints: [],
             aiStrategy: ""
         };
 
@@ -175,77 +174,7 @@ import "driver.js/dist/driver.css";
         }
 
         let map = null;
-        let aiWaypointLayerGroup = null;
-        let gmapAiWpMarkers = [];
         let debugLayerGroup = null;
-
-        function clearAiWaypointMarkers() {
-            if (aiWaypointLayerGroup && map) {
-                aiWaypointLayerGroup.clearLayers();
-            }
-            if (gmapAiWpMarkers.length > 0) {
-                gmapAiWpMarkers.forEach(m => { try { m.remove(); } catch(e){} });
-                gmapAiWpMarkers = [];
-            }
-        }
-
-        function renderAiWaypointMarkers(waypoints) {
-            if (!map) return;
-            if (!aiWaypointLayerGroup) {
-                aiWaypointLayerGroup = L.layerGroup().addTo(map);
-            } else {
-                aiWaypointLayerGroup.clearLayers();
-            }
-
-            if (gmapAiWpMarkers.length > 0) {
-                gmapAiWpMarkers.forEach(m => { try { m.remove(); } catch(e){} });
-                gmapAiWpMarkers = [];
-            }
-
-            if (!waypoints || waypoints.length === 0) return;
-
-            waypoints.forEach((wp, idx) => {
-                const wpHtml = `
-                    <div style="width:26px; height:26px; background: rgba(245, 158, 11, 0.25); border: 2px solid #f59e0b; border-radius: 50%; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 0 10px #f59e0b);">
-                        <i class="fa-solid fa-diamond text-amber-400 text-xs"></i>
-                    </div>
-                `;
-                const icon = L.divIcon({
-                    className: 'custom-ai-wp-icon',
-                    html: wpHtml,
-                    iconSize: [26, 26],
-                    iconAnchor: [13, 13]
-                });
-
-                const marker = L.marker([wp.lat, wp.lng], { icon }).addTo(aiWaypointLayerGroup);
-                
-                const popupContent = `
-                    <div class="p-2 space-y-1 font-sans text-xs bg-slate-900 text-slate-200 rounded border border-amber-500/40">
-                        <div class="font-bold text-amber-400 flex items-center gap-1.5">
-                            <i class="fa-solid fa-diamond text-xs"></i> Planned waypoint #${idx + 1}
-                        </div>
-                        <div class="font-semibold text-white">${wp.name || 'Waypoint ' + (idx + 1)}</div>
-                        <div class="text-sm text-slate-300">${wp.tacticalReason || 'Planned leg.'}</div>
-                        <div class="text-xs text-orange-400 font-mono mt-1">Leg RPM: ${wp.recommendedRpm != null ? Math.round(wp.recommendedRpm) : '—'}</div>
-                        <div class="text-xs text-slate-400 font-mono">${wp.lat.toFixed(4)}°N, ${wp.lng.toFixed(4)}°E</div>
-                    </div>
-                `;
-                marker.bindPopup(popupContent);
-                marker.bindTooltip(`AI Waypoint ${idx + 1}: ${wp.name || ''}`, { direction: 'top', offset: [0, -10] });
-
-                if (typeof gmap !== 'undefined' && gmap && typeof maplibregl !== 'undefined') {
-                    try {
-                        const el = document.createElement('div');
-                        el.className = 'custom-3d-wp-marker';
-                        el.innerHTML = `<div style="width:22px; height:22px; background: rgba(245, 158, 11, 0.35); border: 2px solid #f59e0b; border-radius: 50%; display:flex; align-items:center; justify-content:center; box-shadow: 0 0 12px #f59e0b;"><i class="fa-solid fa-diamond text-amber-400 text-xs"></i></div>`;
-                        const gMarker = new maplibregl.Marker({ element: el })
-                            .setLngLat([wp.lng, wp.lat])
-                            .addTo(gmap);
-                        gmapAiWpMarkers.push(gMarker);
-                    } catch(e) {}
-                }
-            });
-        }
 
         // Fuel saved against the direct track, as a percentage.
         //
@@ -400,42 +329,6 @@ import "driver.js/dist/driver.css";
             }
         }
 
-        function updateAiWaypointsHUD(strategy, waypoints) {
-            const txtSummary = document.getElementById('txtAiStrategySummary');
-            const listElem = document.getElementById('listAiWaypoints');
-
-            if (txtSummary) {
-                txtSummary.innerText = strategy || "Route planned by services/route/planner.py.";
-            }
-
-            if (listElem) {
-                if (!waypoints || waypoints.length === 0) {
-                    listElem.innerHTML = '<div class="text-xs text-slate-500">No macro waypoints needed (direct clear fairway).</div>';
-                    return;
-                }
-
-                let html = '';
-                waypoints.forEach((wp, idx) => {
-                    html += `
-                        <div class="bg-slate-800/80 p-2 rounded border border-slate-700/70 hover:border-amber-500/50 transition-colors">
-                            <div class="flex justify-between items-center text-xs">
-                                <span class="font-bold text-amber-300 flex items-center gap-1">
-                                    <i class="fa-solid fa-diamond text-xs"></i> WP${idx + 1}: ${wp.name || 'Waypoint'}
-                                </span>
-                                <span class="text-xs font-mono text-orange-400 bg-orange-950/60 px-1 rounded">${wp.recommendedRpm != null ? Math.round(wp.recommendedRpm) + ' rpm' : '—'}</span>
-                            </div>
-                            <div class="text-xs text-slate-300 mt-1 leading-tight">${wp.tacticalReason || 'Planned leg.'}</div>
-                            <div class="text-xs font-mono text-slate-400 mt-1 flex justify-between">
-                                <span>Lat: ${wp.lat.toFixed(4)}°</span>
-                                <span>Lng: ${wp.lng.toFixed(4)}°</span>
-                            </div>
-                        </div>
-                    `;
-                });
-                listElem.innerHTML = html;
-            }
-        }
-
         function ensurePortAMarker(lat, lng, name) {
             if (!portAMarker) {
                 const portAIcon = L.divIcon({
@@ -526,10 +419,7 @@ import "driver.js/dist/driver.css";
                 alert("Cannot reset ports during an active voyage. Please abort or complete the voyage first.");
                 return false;
             }
-            State.aiWaypoints = [];
             State.aiStrategy = "";
-            clearAiWaypointMarkers();
-            updateAiWaypointsHUD("Set both Departure (Port A) and Destination (Port B) to plan a route.", []);
             if (portAMarker && map && map.hasLayer(portAMarker)) map.removeLayer(portAMarker);
             if (portBMarker && map && map.hasLayer(portBMarker)) map.removeLayer(portBMarker);
             if (shipMarker && map && map.hasLayer(shipMarker)) map.removeLayer(shipMarker);
@@ -1253,52 +1143,29 @@ import "driver.js/dist/driver.css";
                 basePathLatLngs[0] = L.latLng(portA.lat, portA.lng);
                 basePathLatLngs[basePathLatLngs.length - 1] = L.latLng(portB.lat, portB.lng);
 
-                // Sample candidate macro waypoints along computed water fairway
-                const hydro = getVesselHydrodynamics();
-                const wp1Idx = Math.floor((basePathLatLngs.length - 1) * 0.35);
-                const wp2Idx = Math.floor((basePathLatLngs.length - 1) * 0.70);
-                const waterWp1 = basePathLatLngs[wp1Idx] || basePathLatLngs[0];
-                const waterWp2 = basePathLatLngs[wp2Idx] || basePathLatLngs[basePathLatLngs.length - 1];
-
-                const candidateWaypoints = [
-                    {
-                        lat: waterWp1.lat,
-                        lng: waterWp1.lng,
-                        name: "Strategic Waypoint Alpha (Fairway Clear)",
-                        tacticalReason: "Primary deep-water departure fairway clearance point.",
-                        speedAdviceKts: hydro.serviceSpeed
-                    },
-                    {
-                        lat: waterWp2.lat,
-                        lng: waterWp2.lng,
-                        name: "Strategic Waypoint Bravo (Fairway Alignment)",
-                        tacticalReason: "Mid-passage current alignment & speed transition point.",
-                        speedAdviceKts: hydro.serviceSpeed
-                    }
-                ];
-
-                // 2. Ask the route optimiser where the track should bend.
+                // 2. Consult the route optimiser -- for its audit and its numbers only.
                 //
-                // Two endpoints used to live here. One asked a language model for
-                // "strategic macro waypoints" that would "preserve deep navigable
-                // water" -- a promise it had no bathymetry to keep. The other asked
-                // it to grade this pathfinder's trajectory out of 100 and emit
-                // corrected waypoints. Both are replaced by /api/route, which runs
-                // services/route/planner.py: a sweep of candidate tracks, every leg
-                // costed through the same fuel model /api/advise uses, and any track
-                // violating the depth or forecast-wave constraint rejected outright.
+                // Three things used to live here. Two endpoints asked a language model
+                // for "strategic macro waypoints" that would "preserve deep navigable
+                // water" -- a promise it had no bathymetry to keep -- and to grade this
+                // pathfinder's trajectory out of 100. Both were replaced by /api/route
+                // (services/route/planner.py). The third was a pair of locally sampled
+                // "Strategic Waypoint Alpha/Bravo" markers whose tactical reasons were
+                // fixed strings, not findings.
                 //
-                // The shape of what happens next is unchanged, and that is the point
-                // -- his pathfinder still owns the geometry. The planner proposes
-                // where to bend; the A*/D*/RRT solver still routes between those
-                // points through the water mask, and findNearestWater still snaps
-                // anything that lands on a pixel of shore. A proposal that cannot be
-                // reached over water simply does not survive the snap.
-                let aiWaypointData = null;
+                // The AI waypoint feature is now removed outright. /api/route is still
+                // called, because its constraint audit and its fuel-saving delta are
+                // the Route module's real output, but nothing it returns bends the
+                // drawn track any more: the A*/D*/RRT solver owns the geometry, end to
+                // end, through the water mask.
                 let finalPathPixels = basePathPixels;
-                let isAiRoutingSuccessful = false;
 
-                if (!options.skipAiWaypoints && State.pathMode !== 'astar') {
+                // The route optimiser is still consulted -- its audit panel and its
+                // fuel-saving number are the Route module's real output -- but its
+                // proposed waypoints no longer reshape the drawn track. The AI
+                // waypoint feature was removed; the pathfinder owns the geometry
+                // outright, so there is no second opinion to reconcile on the chart.
+                if (State.pathMode !== 'astar') {
                     updateDisplayValue('throttleStatus', 'Route optimiser planning track...');
                     try {
                         const resRoute = await fetch('/api/route', {
@@ -1314,10 +1181,6 @@ import "driver.js/dist/driver.css";
 
                         const plan = await resRoute.json();
                         State.routePlan = plan;
-
-                        if (resRoute.ok && plan.ok && Array.isArray(plan.waypoints) && plan.waypoints.length > 0) {
-                            aiWaypointData = plan;
-                        }
                         renderAiAuditPanel(plan);
                         renderRouteSavings(plan);
                     } catch (e) {
@@ -1328,73 +1191,17 @@ import "driver.js/dist/driver.css";
                     }
                 }
 
-                let finalWaypoints = candidateWaypoints;
-                if (aiWaypointData && Array.isArray(aiWaypointData.waypoints) && aiWaypointData.waypoints.length > 0) {
-                    // Convert AI waypoints into grid water pixels
-                    const snappedWps = aiWaypointData.waypoints.map(aiWp => {
-                        const gridP = getGridCoords(aiWp.lat, aiWp.lng);
-                        const waterP = this.findNearestWater(grid, gridP.x, gridP.y, gridW, gridH);
-                        const lat = maxLat - (waterP.y / (gridH - 1)) * (maxLat - minLat);
-                        const lng = minLng + (waterP.x / (gridW - 1)) * (maxLng - minLng);
-                        return {
-                            ...aiWp,
-                            lat,
-                            lng,
-                            gridX: waterP.x,
-                            gridY: waterP.y
-                        };
-                    });
-
-                    // Route between the planner's waypoints with the current pathfinder
-                    let multiSegPixels = [];
-                    const segNodes = [{ gridX: snapStart.x, gridY: snapStart.y }, ...snappedWps, { gridX: snapEnd.x, gridY: snapEnd.y }];
-                    let allSegsValid = true;
-
-                    for (let s = 0; s < segNodes.length - 1; s++) {
-                        const pStart = segNodes[s];
-                        const pEnd = segNodes[s + 1];
-                        let subPath;
-                        if (State.pathMode === 'dlite') {
-                            subPath = await this.runDLite(grid, gridW, gridH, minLat, maxLat, minLng, maxLng, pStart.gridX, pStart.gridY, pEnd.gridX, pEnd.gridY, hazardGrid, predictedConditions, distToLand);
-                        } else if (State.pathMode === 'rrt') {
-                            subPath = await this.runRRT(grid, gridW, gridH, minLat, maxLat, minLng, maxLng, pStart.gridX, pStart.gridY, pEnd.gridX, pEnd.gridY, hazardGrid, predictedConditions, distToLand);
-                        } else {
-                            subPath = await this.runAStarWorker(grid, gridW, gridH, minLat, maxLat, minLng, maxLng, pStart.gridX, pStart.gridY, pEnd.gridX, pEnd.gridY, hazardGrid, predictedConditions, distToLand);
-                        }
-                        
-                        if (subPath && subPath.length >= 2) {
-                            if (s === 0) multiSegPixels = multiSegPixels.concat(subPath);
-                            else multiSegPixels = multiSegPixels.concat(subPath.slice(1));
-                        } else {
-                            allSegsValid = false;
-                            break;
-                        }
-                    }
-
-                    if (allSegsValid && multiSegPixels.length >= 2) {
-                        finalPathPixels = multiSegPixels;
-                        finalWaypoints = snappedWps;
-                        isAiRoutingSuccessful = true;
-                    }
-                }
-
                 const pathPixels = finalPathPixels;
 
-                State.aiWaypoints = finalWaypoints;
-                let strategyDesc = aiWaypointData?.strategicStrategy;
-                if (!strategyDesc) {
-                    if (options.skipAiWaypoints || State.pathMode === 'astar') {
-                        strategyDesc = "Pure A* GIS Water Pathfinder (AI overrides bypassed).";
-                    } else if (State.pathMode === 'greatcircle') {
-                        strategyDesc = "Great Circle direct rhumb line navigation.";
-                    } else {
-                        strategyDesc = "GIS water-mask pathfinder optimized fairway transit.";
-                    }
+                let strategyDesc;
+                if (State.pathMode === 'astar') {
+                    strategyDesc = "Pure A* GIS water pathfinder.";
+                } else if (State.pathMode === 'greatcircle') {
+                    strategyDesc = "Great Circle direct rhumb line navigation.";
+                } else {
+                    strategyDesc = "GIS water-mask pathfinder optimized fairway transit.";
                 }
                 State.aiStrategy = strategyDesc;
-
-                renderAiWaypointMarkers(State.aiWaypoints);
-                updateAiWaypointsHUD(State.aiStrategy, State.aiWaypoints);
 
                 if (State.aiStrategy) {
                     log(`Strategic AI Route Strategy: ${State.aiStrategy}`, "ai");
@@ -1556,7 +1363,7 @@ import "driver.js/dist/driver.css";
                     if (grid[i] !== 0) landCount++;
                 }
 
-                return { path: pulled, landCount, meshNodes: gridW * gridH, predictedConditions, targetEtaHours: 18 / 60, isAiUsed: !options.skipAiWaypoints && isAiRoutingSuccessful, isAstarUsed: true };
+                return { path: pulled, landCount, meshNodes: gridW * gridH, predictedConditions, targetEtaHours: 18 / 60, isAstarUsed: true };
             },
 
             findNearestWater(grid, sx, sy, w, h) {
@@ -3489,8 +3296,7 @@ function refreshAnalyticsSidebar() {
                 State.basePath = gcPoints.map(p => [p.lat, p.lng]);
                 if (baseRoutePolyline) baseRoutePolyline.setLatLngs(State.basePath);
             } else {
-                const skipAi = (mode === 'astar');
-                const result = await PrecisionPathfinder.computePath(startPort, endPort, hazards, etaMinutes, { skipAiWaypoints: skipAi });
+                const result = await PrecisionPathfinder.computePath(startPort, endPort, hazards, etaMinutes);
                 resultObj = result;
 
                 if (result.error) {
@@ -3667,10 +3473,10 @@ function refreshAnalyticsSidebar() {
                 // showing "+17.3%" in that case was the fabrication, not the gap.
                 renderRouteSavings(State.routePlan);
 
-                updatePathEngineUI(mode, resultObj.isAiUsed);
+                updatePathEngineUI(mode);
 
                 if (mode === 'hybrid') {
-                    updateDisplayValue('throttleStatus', resultObj.isAiUsed ? 'Route optimiser + A* hybrid active' : 'A* pathfinder (optimiser offline)');
+                    updateDisplayValue('throttleStatus', 'A* water-mask pathfinder active');
                 } else if (mode === 'dlite') {
                     updateDisplayValue('throttleStatus', 'D* Lite Pathfinder Active');
                 } else if (mode === 'rrt') {
@@ -6965,8 +6771,20 @@ function refreshAnalyticsSidebar() {
                 antialias: true,
                 interactive: true,
                 fadeDuration: 0,
-                renderWorldCopies: false
+                renderWorldCopies: false,
+                // Default control suppressed only so it can be re-added compact below.
+                // The map-option object form (attributionControl: { compact: true }) is
+                // MapLibre v4+; this app is pinned to 3.6.2, where the option is a plain
+                // boolean and an object would read as truthy -- i.e. silently expanded.
+                attributionControl: false
             });
+
+            // The credit is re-added immediately, collapsed to an (i) disc instead of a
+            // permanent "(c) Esri | (c) OpenSeaMap contributors" strip. Esri's terms and
+            // OpenSeaMap's ODbL both REQUIRE this credit while their tiles are being
+            // fetched, so it is made quiet, never removed. index.css dims only the
+            // resting disc; the expanded panel keeps its measured contrast.
+            gmap.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
             gmap.on('zoom', () => {
                 if (typeof window.syncZoomUI === 'function') window.syncZoomUI();
