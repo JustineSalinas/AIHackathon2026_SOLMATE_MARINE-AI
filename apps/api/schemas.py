@@ -182,6 +182,46 @@ class MaintenanceRequest(BaseModel):
     )
 
 
+class ComponentLifeRequest(BaseModel):
+    """Engine exposure to resolve the component life table against.
+
+    Note what this does NOT take: telemetry frames. Component life is arithmetic
+    on accumulated wear, so it needs exposure and a renewal history, not a window
+    of readings. Sending frames would invite the life table to start reacting to
+    condition, which is the detector's job and a much stronger claim.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vessel_id: str = "MV-DEMO-01"
+    wear_hours: float = Field(
+        ge=0,
+        description="Cumulative wear-equivalent hours: run-hours weighted by the load "
+        "the engine was at, per services/maintenance/duty.py. The denominator of "
+        "every figure in the response.",
+    )
+    severity_index: float | None = Field(
+        None,
+        gt=0,
+        description="Duty severity, where 1.0 is a life spent at cruise. Needed only "
+        "to convert wear-hours into calendar months.",
+    )
+    hours_per_day: float | None = Field(
+        None,
+        gt=0,
+        description="Operator's stated typical running hours per day. Without it, and "
+        "without severity, months remaining is omitted rather than filled from an "
+        "assumed working pattern -- a boat running two hours a day and one running "
+        "twelve do not share a service calendar.",
+    )
+    wear_hours_at_last_renewal: dict[str, float] | None = Field(
+        None,
+        description="Wear-hour reading when each component was last renewed, keyed by "
+        "component_id. Absent means never renewed -- the safe reading for an unknown "
+        "history, since it errs towards renewing early.",
+    )
+
+
 class SafetyRequest(BaseModel):
     """A single frame to check against the rule set.
 

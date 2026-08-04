@@ -1635,55 +1635,116 @@
             <div class="p-4 sm:p-6 flex-1 overflow-y-auto flex flex-col lg:flex-row gap-5 sm:gap-6 bg-slate-950">
                 <!-- X-Ray (Left Column) -->
                 <div class="flex-1 min-w-0 flex flex-col min-h-[420px]">
-                   <div id="tabContentXray" class="space-y-4 flex-1 min-h-0 flex flex-col w-full">
-                    <div class="bg-slate-900/90 rounded-xl p-4 border border-orange-500/20 shadow-lg shadow-black/40 backdrop-blur-sm flex-1 flex flex-col min-h-[380px]">
+                   <!-- Scrolls, so a taller hull card pushes the diagnostics card down
+                        instead of being painted over by it. Without this the two
+                        overlapped by 118 px on a short viewport. -->
+                   <div id="tabContentXray" class="space-y-4 flex-1 min-h-0 overflow-y-auto flex flex-col w-full">
+                    <!-- The hull's height budget lives HERE, on the card, not on the
+                         panel inside it: a min-height on the panel simply burst out of
+                         this box and overlapped the card below. 480 px carries the
+                         header, the enlarged hull and the isolation filters. -->
+                    <div class="bg-slate-900/90 rounded-xl p-4 border border-orange-500/20 shadow-lg shadow-black/40 backdrop-blur-sm flex-1 flex flex-col min-h-[400px]">
                         <div class="text-xs font-bold text-orange-400 border-b border-orange-500/15 pb-2 flex items-center justify-between mb-3 shrink-0">
                             <span class="flex items-center gap-2"><i class="fa-solid fa-ship text-orange-500"></i>Vessel Hull & Propulsion X-Ray</span>
                             <span class="text-xs text-amber-400 font-mono flex items-center gap-1.5"><i class="fa-solid fa-circle text-[6px] text-emerald-400 animate-pulse"></i> LIVE HULL SCAN</span>
                         </div>
-                        <div class="flex-1 relative bg-slate-950 rounded-xl border border-orange-500/20 overflow-hidden flex items-center justify-center p-6 shadow-inner">
-                            <!-- X-Ray Boat Visual -->
-                            <div class="relative w-32 h-72 border-2 border-orange-500/40 rounded-[50%_50%_10%_10%/15%_15%_5%_5%] bg-slate-950/90 shadow-[0_0_30px_rgba(249,115,22,0.18)] overflow-hidden">
-                                
-                                <!-- Internal Grid lines -->
-                                <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTEwIDBMMCAwTDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNDksMTE1LDIyLDAuMDgpIiBzdHJva2Utd2lkdGg9IjAuNSIvPjwvc3ZnPg==')] opacity-60"></div>
+                        <!-- The hull was being CLIPPED, not merely small: at 288 px tall in a
+                             261 px content box the engine block, shaft and propeller were cut
+                             off by the panel edge and the isolation filters sat on top of what
+                             was left. The room comes from the card's min-height above; this
+                             panel just fills it. -->
+                        <div class="flex-1 relative bg-slate-950 rounded-xl border border-orange-500/20 overflow-hidden flex items-center justify-center pt-6 px-4 pb-16 shadow-inner">
+                            <!-- Vessel side view.
+                                 Rebuilt from the vertical top-down hull, which used 128 px of a
+                                 638 px panel and left ~500 px empty either side. Side-on uses
+                                 that width, and gives each system a block big enough to carry
+                                 its own design-life bar -- so the drawing reports the P.P.S.
+                                 table rather than decorating it.
 
-                                <!-- Engine Room -->
-                                <div id="xrayEngine" class="absolute bottom-8 left-1/2 -translate-x-1/2 w-20 h-16 border border-orange-500/60 bg-orange-500/20 rounded-lg flex flex-col items-center justify-center transition-colors shadow-[0_0_12px_rgba(249,115,22,0.25)]">
-                                    <i id="xrayEngineIcon" class="fa-solid fa-fan text-orange-400 text-base"></i>
-                                    <div class="text-xs text-white mt-1 font-mono font-bold tracking-wider">ENGINE</div>
-                                </div>
-                                
-                                <!-- Fuel Tanks -->
-                                <div class="absolute bottom-28 left-2 w-4 h-16 border border-amber-500/60 bg-amber-500/20 rounded-md overflow-hidden flex flex-col justify-end">
-                                    <div id="xrayFuelLevelL" class="w-full bg-gradient-to-t from-orange-500 to-amber-400 transition-all duration-1000" style="height: 100%;"></div>
-                                </div>
-                                <div class="absolute bottom-28 right-2 w-4 h-16 border border-amber-500/60 bg-amber-500/20 rounded-md overflow-hidden flex flex-col justify-end">
-                                    <div id="xrayFuelLevelR" class="w-full bg-gradient-to-t from-orange-500 to-amber-400 transition-all duration-1000" style="height: 100%;"></div>
-                                </div>
-                                <div class="absolute bottom-[136px] left-1/2 -translate-x-1/2 text-xs text-amber-300 font-mono tracking-widest bg-slate-900/90 px-1.5 py-0.5 border border-amber-500/30 rounded">FUEL</div>
-                                
-                                <!-- Generator -->
-                                <div id="xrayGenerator" class="absolute bottom-28 left-1/2 -translate-x-1/2 w-7 h-7 border border-emerald-500/50 bg-emerald-500/15 rounded-md flex items-center justify-center shadow-[0_0_8px_rgba(16,185,129,0.2)] transition-colors">
-                                    <i class="fa-solid fa-bolt text-emerald-400 text-xs"></i>
+                                 EVERY xray* id from the previous hull is preserved. 48 places in
+                                 main.js drive these elements -- propeller spin, isolation
+                                 filters, fuel levels, radar sweep -- and renaming any of them
+                                 would silently kill an animation rather than fail loudly. -->
+                            <div class="relative w-full max-w-[620px] aspect-[62/21]">
+
+                                <!-- Hull outline. SVG rather than a CSS clip-path so the stroke
+                                     survives on the raked bow; a clipped border loses its
+                                     diagonal edge. -->
+                                <svg viewBox="0 0 620 210" class="absolute inset-0 w-full h-full" aria-hidden="true">
+                                    <defs>
+                                        <pattern id="hullGrid" width="14" height="14" patternUnits="userSpaceOnUse">
+                                            <path d="M14 0L0 0L0 14" fill="none" stroke="rgba(249,115,22,0.10)" stroke-width="0.6"/>
+                                        </pattern>
+                                        <clipPath id="hullClip">
+                                            <path d="M24 52 L440 30 L600 105 L440 180 L24 158 Z"/>
+                                        </clipPath>
+                                    </defs>
+                                    <rect x="0" y="0" width="620" height="210" fill="url(#hullGrid)" clip-path="url(#hullClip)"/>
+                                    <path d="M24 52 L440 30 L600 105 L440 180 L24 158 Z"
+                                          fill="rgba(2,6,23,0.92)" stroke="rgba(249,115,22,0.45)" stroke-width="2.5"/>
+                                    <path d="M24 78 L452 62" stroke="rgba(249,115,22,0.22)" stroke-width="1.5" fill="none"/>
+                                    <text x="558" y="112" fill="rgba(148,163,184,0.75)" font-size="11" font-family="ui-monospace,monospace">BOW</text>
+                                </svg>
+
+                                <!-- Propulsion: shaft and propeller at the stern, plus the block
+                                     carrying the shaft/propeller/rudder design-life score. -->
+                                <div id="xrayShaft" class="absolute left-[6.5%] top-1/2 -translate-y-1/2 w-[9%] h-[3px] bg-emerald-600 transition-colors"></div>
+                                <div id="xrayPropeller" class="absolute left-[3%] top-1/2 -translate-y-1/2 w-[2.2%] h-[26%] bg-emerald-400 rounded-full shadow-[0_0_8px_#10b981] transition-colors"></div>
+
+                                <div id="hullBlock-propulsion" class="absolute left-[7.5%] bottom-[13%] w-[13%] rounded-md border border-emerald-500/50 bg-emerald-500/10 px-1 py-1">
+                                    <div class="text-[0.55rem] text-emerald-300 font-mono tracking-wider text-center leading-tight">DRIVE</div>
+                                    <div class="h-1 mt-1 bg-slate-800 rounded-full overflow-hidden">
+                                        <div data-life-bar class="h-full bg-emerald-500 transition-all duration-700" style="width:100%"></div>
+                                    </div>
                                 </div>
 
-                                <!-- Bridge / Control -->
-                                <div id="xrayBridge" class="absolute top-20 left-1/2 -translate-x-1/2 w-24 h-11 border border-emerald-500/50 bg-emerald-500/15 rounded-lg flex flex-col items-center justify-center shadow-[0_0_12px_rgba(16,185,129,0.2)] transition-colors">
-                                    <i class="fa-solid fa-desktop text-white text-sm"></i>
-                                    <div class="text-xs text-emerald-300 mt-0.5 font-mono font-bold">BRIDGE</div>
+                                <!-- Engine room -->
+                                <div id="xrayEngine" class="absolute left-[23%] top-[36%] w-[17%] h-[34%] border border-orange-500/60 bg-orange-500/20 rounded-lg flex flex-col items-center justify-center transition-colors shadow-[0_0_12px_rgba(249,115,22,0.25)]">
+                                    <i id="xrayEngineIcon" class="fa-solid fa-fan text-orange-400 text-sm"></i>
+                                    <div class="text-[0.6rem] text-white mt-0.5 font-mono font-bold tracking-wider">ENGINE</div>
                                 </div>
-                                
-                                <!-- Radar / Scanner -->
-                                <div id="xrayRadarRing" class="absolute top-11 left-1/2 -translate-x-1/2 w-7 h-7 rounded-full border border-emerald-500/50 bg-emerald-500/10 flex items-center justify-center transition-colors">
+                                <div id="hullBlock-engine" class="absolute left-[23%] bottom-[9%] w-[17%] rounded-md border border-orange-500/40 bg-orange-500/10 px-1 py-0.5">
+                                    <div class="h-1 bg-slate-800 rounded-full overflow-hidden">
+                                        <div data-life-bar class="h-full bg-emerald-500 transition-all duration-700" style="width:100%"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Fuel: port and starboard tanks -->
+                                <div class="absolute left-[44%] top-[38%] w-[12%] h-[30%] border border-amber-500/60 bg-amber-500/15 rounded-md flex gap-[3px] p-[3px]">
+                                    <div class="flex-1 bg-slate-900/70 rounded-sm overflow-hidden flex flex-col justify-end">
+                                        <div id="xrayFuelLevelL" class="w-full bg-gradient-to-t from-orange-500 to-amber-400 transition-all duration-1000" style="height:100%"></div>
+                                    </div>
+                                    <div class="flex-1 bg-slate-900/70 rounded-sm overflow-hidden flex flex-col justify-end">
+                                        <div id="xrayFuelLevelR" class="w-full bg-gradient-to-t from-orange-500 to-amber-400 transition-all duration-1000" style="height:100%"></div>
+                                    </div>
+                                </div>
+                                <div class="absolute left-[44%] top-[30%] w-[12%] text-[0.55rem] text-amber-300 font-mono tracking-widest text-center">FUEL</div>
+                                <div id="hullBlock-fuel" class="absolute left-[44%] bottom-[9%] w-[12%] rounded-md border border-amber-500/40 bg-amber-500/10 px-1 py-0.5">
+                                    <div class="h-1 bg-slate-800 rounded-full overflow-hidden">
+                                        <div data-life-bar class="h-full bg-emerald-500 transition-all duration-700" style="width:100%"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Electrical system: the sketch's E.S. -->
+                                <div id="xrayGenerator" class="absolute left-[60%] top-[40%] w-[8%] h-[24%] border border-sky-500/50 bg-sky-500/15 rounded-md flex items-center justify-center shadow-[0_0_8px_rgba(56,189,248,0.2)] transition-colors">
+                                    <i class="fa-solid fa-bolt text-sky-300 text-xs"></i>
+                                </div>
+                                <div class="absolute left-[60%] top-[31%] w-[8%] text-[0.55rem] text-sky-300 font-mono tracking-widest text-center">E.S.</div>
+                                <div id="hullBlock-electrical" class="absolute left-[60%] bottom-[11%] w-[8%] rounded-md border border-sky-500/40 bg-sky-500/10 px-1 py-0.5">
+                                    <div class="h-1 bg-slate-800 rounded-full overflow-hidden">
+                                        <div data-life-bar class="h-full bg-emerald-500 transition-all duration-700" style="width:100%"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Bridge and radar, above the deck line -->
+                                <div id="xrayBridge" class="absolute left-[30%] top-[20%] w-[16%] h-[13%] border border-emerald-500/50 bg-emerald-500/15 rounded-t-lg flex items-center justify-center shadow-[0_0_12px_rgba(16,185,129,0.2)] transition-colors">
+                                    <div class="text-[0.6rem] text-emerald-300 font-mono font-bold tracking-wider">BRIDGE</div>
+                                </div>
+                                <div id="xrayRadarRing" class="absolute left-[47.5%] top-[21%] w-[3.6%] aspect-square rounded-full border border-emerald-500/50 bg-emerald-500/10 flex items-center justify-center transition-colors">
                                     <div id="xrayRadarLine" class="w-1/2 h-[1px] bg-emerald-400 absolute top-1/2 left-1/2 origin-left shadow-[0_0_6px_#10b981] transition-colors"></div>
                                 </div>
-                                
-                                <!-- Shaft & Propeller -->
-                                <div id="xrayShaft" class="absolute bottom-2 left-1/2 -translate-x-1/2 w-1.5 h-6 bg-emerald-600 transition-colors"></div>
-                                <div id="xrayPropeller" class="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-9 h-1.5 bg-emerald-400 rounded-full shadow-[0_0_8px_#10b981] transition-colors"></div>
                             </div>
-                            
+
                             <!-- Overlay Stats HUD -->
                             <div class="absolute top-3 left-3 text-xs font-mono space-y-1.5 bg-slate-950/90 p-2.5 rounded-lg border border-orange-500/30 shadow-lg backdrop-blur-md text-slate-200">
                                 <div class="text-orange-400 flex justify-between gap-3 font-semibold"><span>ENG LOAD:</span> <span id="xrayEngLoad" class="text-white">--</span>%</div>
@@ -1706,8 +1767,153 @@
                             <span class="flex items-center gap-2"><i class="fa-solid fa-brain text-orange-500"></i>AI Diagnostics & Prediction</span>
                             <span id="badgeEngineHealth" class="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded font-mono font-bold">Health: 100%</span>
                         </div>
+                        <!-- What produced which number. The panels below mix a live model,
+                             plain arithmetic and operator input, and a judge cannot tell them
+                             apart by looking. This strip says which is which. -->
+                        <div class="grid grid-cols-3 gap-2 text-[0.6rem] leading-tight">
+                            <div class="bg-slate-950/60 border border-sky-500/25 rounded p-2">
+                                <div class="text-sky-400 font-bold tracking-wider uppercase mb-1">Input</div>
+                                <div class="text-slate-400">7 sensor streams @ 10 s<br>operator log<br>fault injector (demo)</div>
+                            </div>
+                            <div class="bg-slate-950/60 border border-orange-500/25 rounded p-2">
+                                <div class="text-orange-400 font-bold tracking-wider uppercase mb-1">Model</div>
+                                <div class="text-slate-400">robust z + PCA (ML)<br>duty accumulator<br>design-life table</div>
+                            </div>
+                            <div class="bg-slate-950/60 border border-emerald-500/25 rounded p-2">
+                                <div class="text-emerald-400 font-bold tracking-wider uppercase mb-1">Output</div>
+                                <div class="text-slate-400">anomaly + timestamp<br>life score, months<br>advisory EN/FIL</div>
+                            </div>
+                        </div>
+
                         <div id="txtEnginePrediction" class="bg-slate-950/80 border border-slate-800/80 rounded-lg p-3 text-sm text-slate-200 leading-relaxed font-sans">
                             AI monitoring standby. Awaiting telemetry stream.
+                        </div>
+
+                        <!-- Operator-entered maintenance history.
+                             Two facts the vessel cannot measure. The failure count is
+                             the input that makes the Phase 1 -> Phase 2 maturity gate
+                             real: the phase is gated on labelled failure history, and
+                             nothing in the system could previously record any. It
+                             reports PROGRESS toward Phase 2 and never flips the phase,
+                             because a vessel claiming Phase 2 while serving no
+                             remaining-useful-life figure would be claiming a maturity
+                             it cannot act on. -->
+                        <div class="bg-slate-950/80 border border-slate-800/80 rounded-lg p-3 space-y-2">
+                            <div class="text-xs font-bold text-sky-400 flex items-center gap-1.5 uppercase tracking-wider">
+                                <i class="fa-solid fa-clipboard-list text-sky-400"></i> Operator log
+                            </div>
+                            <div class="grid grid-cols-3 gap-2">
+                                <div>
+                                    <label class="block text-xs text-slate-400 mb-1" for="inDaysSinceService">Days since service</label>
+                                    <input type="number" id="inDaysSinceService" value="0" min="0" step="1"
+                                           class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-orange-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-400 mb-1" for="inFailureReports">Logged failures</label>
+                                    <input type="number" id="inFailureReports" value="0" min="0" step="1"
+                                           class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-orange-500 outline-none">
+                                </div>
+                                <!-- The bridge between wear-hours and a calendar month. Without
+                                     it the API omits months entirely rather than assume a working
+                                     pattern: a boat running two hours a day and one running
+                                     twelve do not share a service calendar. -->
+                                <div>
+                                    <label class="block text-xs text-slate-400 mb-1" for="inHoursPerDay">Running h/day</label>
+                                    <input type="number" id="inHoursPerDay" value="6" min="0" max="24" step="0.5"
+                                           class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-orange-500 outline-none">
+                                </div>
+                            </div>
+                            <div id="outPhaseMaturity" class="text-xs pt-1 border-t border-slate-800"></div>
+                        </div>
+
+                        <!-- P.P.S. — Propulsion & Powertrain Status.
+                             Component design life spent against measured exposure. This panel
+                             may name a part and quote months where the condition readout above
+                             may not, because a published design life divided by wear-hours is a
+                             lookup, not a forecast of failure. The two are separate contracts
+                             for exactly that reason; see packages/contracts/maintenance.py. -->
+                        <div class="bg-slate-950/80 border border-slate-800/80 rounded-lg p-3 space-y-2">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-xs font-bold text-emerald-400 flex items-center gap-1.5 uppercase tracking-wider">
+                                    <i class="fa-solid fa-gauge-high text-emerald-400"></i> P.P.S. — Component Life
+                                </span>
+                                <span class="text-[0.6rem] text-slate-500 tracking-wider uppercase">Class-typical design lives</span>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <div class="text-xs text-slate-400">Wear-hours</div>
+                                    <div id="outWearHours" class="font-bold text-sky-300 hud-font text-sm truncate">0.00 h</div>
+                                </div>
+                                <div>
+                                    <div class="text-xs text-slate-400">Duty severity</div>
+                                    <div id="outDutySeverity" class="font-bold text-amber-300 hud-font text-sm truncate">--</div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between text-[0.6rem] text-slate-500 tracking-wider uppercase pt-1 border-t border-slate-800">
+                                <span>Component</span><span>Life remaining at this duty</span>
+                            </div>
+                            <div id="listComponentLife"></div>
+
+                            <div id="txtComponentLifeAdvisory" class="text-xs text-slate-400 leading-snug">
+                                Component life resolves once the engine has run-hours.
+                            </div>
+                            <div class="text-[0.6rem] text-slate-600 leading-snug">
+                                Design life divided by measured wear — not a prediction of failure.
+                                Remaining useful life needs this vessel's own failure history.
+                            </div>
+                        </div>
+
+                        <!-- Anomaly log. The detector reports a state; an operator needs a
+                             record. Entries are de-duplicated on the deviating stream, so a
+                             standing fault writes one line rather than one every fifteen
+                             seconds. -->
+                        <div class="bg-slate-950/80 border border-slate-800/80 rounded-lg p-3 space-y-2">
+                            <div class="text-xs font-bold text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
+                                <i class="fa-solid fa-clock-rotate-left text-amber-400"></i> Anomaly log
+                            </div>
+                            <div id="listAnomalyEvents">
+                                <div class="text-xs text-slate-500">No anomalies recorded this session.</div>
+                            </div>
+                        </div>
+
+                        <!-- Fault injection harness.
+                             The dropdown perturbs the SIMULATED telemetry only. Nothing
+                             about the selection is sent to the detector -- it receives
+                             sensor values and nothing else -- so the detection reported
+                             above is a real catch, not a replayed script.
+                             The control stays locked until this engine's healthy
+                             baseline is complete, because a baseline fitted over a
+                             developing fault learns the fault as normal. -->
+                        <div class="bg-slate-950/80 border border-slate-800/80 rounded-lg p-3 space-y-2">
+                            <div class="text-xs font-bold text-sky-400 flex items-center gap-1.5 uppercase tracking-wider">
+                                <i class="fa-solid fa-vial text-sky-400"></i> Fault Injection (simulation)
+                            </div>
+                            <select id="selMaintFault" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white focus:border-orange-500 outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                                <option value="healthy">Healthy — no injected fault</option>
+                                <option value="alternator">Alternator / charging fault</option>
+                                <option value="cooling_fouling">Cooling system fouling</option>
+                                <option value="bearing_wear">Bearing wear</option>
+                                <option value="load_decoupled">Load-decoupled drift (PCA-only)</option>
+                            </select>
+                            <div id="txtMaintFaultNote" class="text-xs text-slate-500 leading-snug">
+                                Collecting this engine's healthy normal. Fault injection unlocks when it is complete.
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 pt-1 border-t border-slate-800">
+                                <div>
+                                    <div class="text-xs text-slate-400">Baseline</div>
+                                    <div id="outMaintBaseline" class="font-bold text-amber-300 hud-font text-sm truncate">Learning 0/90</div>
+                                </div>
+                                <div>
+                                    <div class="text-xs text-slate-400">Run-hours</div>
+                                    <div id="outMaintRunHours" class="font-bold text-sky-300 hud-font text-sm truncate">0.00 h</div>
+                                </div>
+                                <div>
+                                    <div class="text-xs text-slate-400">Detection latency</div>
+                                    <div id="outMaintLatency" class="font-bold text-slate-400 hud-font text-sm truncate">--</div>
+                                </div>
+                            </div>
                         </div>
                         <div id="boxAiAlert" class="hidden mt-2 bg-red-500/15 border border-red-500/40 rounded-lg p-3 space-y-1 shadow-[0_0_15px_rgba(244,63,94,0.15)]">
                             <div class="text-xs font-bold text-red-400 flex items-center gap-1.5 uppercase tracking-wider">

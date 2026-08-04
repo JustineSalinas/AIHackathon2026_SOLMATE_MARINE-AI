@@ -14,7 +14,7 @@ collected from any vessel.
 | Key | Source | Licence | Used for |
 |---|---|---|---|
 | `uci-cbm` | UCI *Condition Based Maintenance of Naval Propulsion Plants* (Coraddu et al., 2014) | CC BY 4.0 | Engine fuel map for Speed Optimization |
-| ~~`nasa-cmapss`~~ | NASA C-MAPSS turbofan degradation (Saxena et al., 2008) | Public domain (US Gov) | **Registered and fetchable, but consumed by nothing.** See the correction below. |
+| `nasa-cmapss` | NASA C-MAPSS turbofan degradation (Saxena et al., 2008) | Public domain (US Gov) | **Phase 2 RUL methodology demonstration** — `services/maintenance/train_rul.py`. Trained and validated on turbofan units only; it produces no figure about a boat. See below. |
 | `natural-earth-coastline` | Natural Earth 10m physical coastline | Public domain | Chart geometry on the bridge display |
 | `sentinel2-cloudless` | Sentinel-2 cloudless 2020 (EOX) | CC BY 4.0 | Satellite basemap, and the land mask the helm view ray-casts for its horizon |
 | `openseamap-seamarks` | OpenSeaMap aids to navigation (OpenStreetMap seamark tags) | ODbL 1.0 | Charted lights and harbour features on the bridge display — 10 marks, 8 lit, in the chart window |
@@ -22,6 +22,22 @@ collected from any vessel.
 | `open-meteo-marine-archive` | Open-Meteo Marine Weather API (wave + ocean current models) | CC BY 4.0 | Route forecaster's wave/current targets — same grid and range |
 | ~~GEBCO~~ | GEBCO global bathymetry grid | Public, attribution required | Depth safety constraint — **not yet integrated**, and deliberately absent from `data/registry.py` so `data/download.py` cannot fetch a source we do not use. Route Optimization is the module that needs it. |
 
+> **Updated 2026-08-04 — C-MAPSS is now consumed, by exactly one thing.**
+> `services/maintenance/train_rul.py` trains a remaining-useful-life regressor on
+> FD001 and validates it per engine against the supplied held-out set: **14.58
+> cycles RMSE**, against 41.89 for predicting the training mean. The artifacts are
+> `models/rul_cmapss.onnx` and its card.
+>
+> **It is wired to nothing.** Its output does not reach `/maintenance`, the
+> component-life endpoint or the console. It demonstrates that the *method*
+> works on real run-to-failure data; the vessel still has no failure history of
+> its own, so it still gets no RUL figure. The P.P.S. panel's numbers come from
+> `services/maintenance/lifespan.py` — published design lives divided by measured
+> wear-hours, which is arithmetic about this boat rather than a turbofan's fate.
+>
+> The correction below stands for the Phase 1 detector and is kept verbatim,
+> because it remains true: nothing pretrains it.
+>
 > **Corrected 2026-08-04 — C-MAPSS pretrains nothing.** This table previously
 > listed its use as "Pretraining the Phase 1 anomaly detector." No code path
 > consumes it: `git grep cmapss -- '*.py'` returns `data/registry.py` and nothing

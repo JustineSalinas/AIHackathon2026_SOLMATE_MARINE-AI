@@ -569,6 +569,7 @@ export function createApp(): express.Express {
       if (!upstream.ok) throw new Error(`upstream ${upstream.status}`);
       const data = (await upstream.json()) as Record<string, unknown>;
       const streams = (data.streams as Record<string, unknown>[]) ?? [];
+      const duty = (data.duty as Record<string, unknown>) ?? null;
       res.json({
         anomalyScore: data.anomaly_score,
         isAnomalous: data.is_anomalous,
@@ -577,14 +578,114 @@ export function createApp(): express.Express {
         // reference engine" is the difference between a usable reading and a
         // misleading one, so the strip is told which it got.
         baselineFitted: Array.isArray(baselineFrames) && baselineFrames.length > 0,
+
+        // How well-established this engine's normal is. Previously dropped here,
+        // which let the panel report "within its learned normal" without ever
+        // saying how well the normal was known -- reassurance from a baseline
+        // with twenty run-hours behind it reads exactly like reassurance from a
+        // mature one. It is the detector's own hedge and belongs on screen.
+        baselineConfidence: data.baseline_confidence,
+        observedHours: data.observed_hours,
+
+        // The guard-checked sentence, in both languages, plus who wrote it.
+        // Generated on every call and previously discarded: the console rebuilt
+        // an English-only string of its own, so the Filipino half never reached a
+        // Filipino crew and the advisory guard's work was invisible.
+        advisoryEn: data.advisory_en,
+        advisoryFil: data.advisory_fil,
+        advisorySource: data.advisory_source,
+
+        // Exposure. Null unless rated_rpm was sent -- load is meaningless without
+        // a rating to divide by, so the API omits the section rather than guessing.
+        duty: duty
+          ? {
+              runningHours: duty.running_hours,
+              severityIndex: duty.severity_index,
+              dominantBand: duty.dominant_label_en,
+              dominantBandFil: duty.dominant_label_fil,
+              weightedHours: duty.weighted_hours,
+            }
+          : null,
+
         streams: streams.slice(0, 3).map((s) => ({
           label: s.label_en,
+          labelFil: s.label_fil,
           zScore: s.z_score,
           contributionPct: s.contribution_pct,
+          // "Drift reads differently from a spike" -- the contract's own words.
+          // Minutes deviating is the most diagnostic field the detector produces
+          // and it was being thrown away at this boundary.
+          trendMinutes: s.trend_minutes,
+          reconstructionError: s.reconstruction_error,
         })),
       });
     } catch (e) {
       apiFailure(res, "/maintenance", e);
+    }
+  });
+
+  /**
+   * Component design life. Sibling of `/api/maintenance`, not a variant of it:
+   * that one reports what is deviating now, this one reports how much published
+   * design life each part has left at the duty it is actually worked at.
+   *
+   * Takes exposure, not telemetry. Life is arithmetic on accumulated wear, so
+   * sending frames here would invite the life table to start reacting to
+   * condition -- a far stronger claim than this build supports.
+   */
+  app.post("/api/maintenance/component-life", async (req, res) => {
+    const {
+      wearHours = null,
+      severityIndex = null,
+      hoursPerDay = null,
+      wearHoursAtLastRenewal = null,
+    } = req.body || {};
+
+    const wear = numberOrNull(wearHours);
+    if (wear === null) {
+      res.status(400).json({ error: "wearHours required" });
+      return;
+    }
+
+    try {
+      const upstream = await fetch(`${API_URL}/maintenance/component-life`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          vessel_id: "MV-CONSOLE-01",
+          wear_hours: wear,
+          // Both are gt=0 upstream, so `Number(null)` -> 0 would 422 the request.
+          // numberOrNull tests for absence before finiteness.
+          severity_index: numberOrNull(severityIndex),
+          hours_per_day: numberOrNull(hoursPerDay),
+          wear_hours_at_last_renewal: wearHoursAtLastRenewal ?? null,
+        }),
+      });
+      if (!upstream.ok) throw new Error(`upstream ${upstream.status}`);
+      const data = (await upstream.json()) as Record<string, unknown>;
+      const components = (data.components as Record<string, unknown>[]) ?? [];
+      res.json({
+        wearHours: data.wear_hours,
+        severityIndex: data.severity_index,
+        hoursPerDay: data.hours_per_day,
+        beyondDesignLifeCount: data.beyond_design_life_count,
+        advisoryEn: data.advisory_en,
+        advisoryFil: data.advisory_fil,
+        components: components.map((c) => ({
+          id: c.component_id,
+          label: c.label_en,
+          labelFil: c.label_fil,
+          system: c.system,
+          designLifeWearHours: c.design_life_wear_hours,
+          wearHoursRemaining: c.wear_hours_remaining,
+          lifeScore: c.life_score,
+          percentConsumed: c.percent_consumed,
+          monthsRemaining: c.months_remaining,
+          condition: c.condition,
+        })),
+      });
+    } catch (e) {
+      apiFailure(res, "/maintenance/component-life", e);
     }
   });
 
