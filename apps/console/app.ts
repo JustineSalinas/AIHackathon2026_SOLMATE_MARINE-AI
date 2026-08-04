@@ -812,6 +812,7 @@ export function createApp(): express.Express {
             csv_text: csvText,
             rated_rpm: numberOrNull(ratedRpm) ?? 2800,
           }),
+          signal: AbortSignal.timeout(60000),
         });
         if (!upstream.ok) throw new Error(`upstream ${upstream.status}`);
         const d = (await upstream.json()) as Record<string, unknown>;

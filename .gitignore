@@ -4,6 +4,8 @@
 # Voyage records: runtime state, per-deployment, never part of the repo.
 /data/voyages.db
 *.csv
+!/data/synthetic/**/*.csv
+!/data/synthetic/*.csv
 *.parquet
 *.nc
 *.zip

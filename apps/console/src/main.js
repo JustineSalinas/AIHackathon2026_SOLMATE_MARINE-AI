@@ -3244,7 +3244,7 @@ function uploadPdmHistory(file) {
                 State.pdm.lastCallMs = 0;
                 refreshPdmAssessment();
             })
-            .catch(() => { if (statusEl) statusEl.textContent = 'Import failed — the API did not accept the file.'; });
+            .catch((err) => { if (statusEl) statusEl.textContent = `Import failed: ${err?.message || 'the API did not accept the file.'}`; });
     };
     reader.readAsText(file);
 }
