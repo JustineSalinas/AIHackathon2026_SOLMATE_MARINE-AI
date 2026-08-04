@@ -2795,7 +2795,7 @@ function resetMaintenanceSim() {
  * that the fault is normal, which is the one failure mode that cannot be seen
  * from the outside.
  */
-function collectMaintenanceFrame({ coolantC, oilBar, egtC, vibG, batteryV, particulatePpm, noxPpm }) {
+function collectMaintenanceFrame({ coolantC, oilBar, egtC, vibG, batteryV, particulatePpm, noxPpm, engineRpm }) {
     const m = State.maintenance;
     if (!Number.isFinite(coolantC) || !Number.isFinite(oilBar) || !Number.isFinite(egtC)) return;
 
@@ -2833,6 +2833,11 @@ function collectMaintenanceFrame({ coolantC, oilBar, egtC, vibG, batteryV, parti
         vessel_id: 'MV-CONSOLE-01',
         ts: new Date().toISOString(),
         source: 'simulator',
+        // Engine speed, so the duty cycle can be computed at all. Load is RPM as a
+        // fraction of rating, and a frame with no throttling block yields no load,
+        // no running hours, and a duty summary of None -- which is why the exposure
+        // slot read "rating not supplied" even once a rating was being sent.
+        throttling: Number.isFinite(engineRpm) ? { engine_rpm: Math.max(0, engineRpm) } : {},
         electro_mechanical: {
             coolant_temp_c: Number(faultedCoolant.toFixed(2)),
             oil_pressure_kpa: Number(faultedOilKpa.toFixed(1)),  // bar -> kPa at the call site
@@ -2875,6 +2880,11 @@ function collectMaintenanceFrame({ coolantC, oilBar, egtC, vibG, batteryV, parti
             frames: m.frames.slice(),
             baselineFrames: m.baseline,
             observedHours: runHours,
+            // Without a rating there is no load fraction, so the API omitted the
+            // duty-cycle summary entirely rather than guess one -- and this call
+            // never sent it, which meant the whole exposure section was computed
+            // -capable and permanently null. The engine spec table has the rating.
+            ratedRpm: Number((State.extractedEngineSpecs || {}).ratedRpm) || 2800,
         }),
     })
         .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
@@ -2916,30 +2926,167 @@ function noteMaintenanceDetection() {
 }
 
 /** Paint the API's verdict. The console forms no opinion of its own here. */
+/**
+ * Operator-entered maintenance history.
+ *
+ * Two facts the vessel cannot measure and nothing in this build previously
+ * recorded: when it was last serviced, and how many real breakdowns have been
+ * logged against it. Both are per-vessel and outlive a voyage, so they persist.
+ *
+ * The failure count is the more consequential of the two. `MaintenancePhase` is
+ * gated on roughly two years of labelled failure history -- and `detect()` hard
+ * codes PHASE_1_COLD_START, because until now there was no input in the system
+ * that could ever move a vessel off it. This is that input.
+ */
+const OPERATOR_HISTORY_KEY = 'marine_ai_operator_history';
+
+/** Labelled failures conventionally needed before a supervised RUL model has
+ *  enough to learn from. Round, stated, and arguable -- which is the honest form
+ *  for a number that gates a claim rather than one that came out of a fit. */
+const PHASE_2_FAILURE_TARGET = 20;
+
+function loadOperatorHistory() {
+    try {
+        const raw = JSON.parse(localStorage.getItem(OPERATOR_HISTORY_KEY) || '{}');
+        return {
+            daysSinceService: Number.isFinite(Number(raw.daysSinceService)) ? Number(raw.daysSinceService) : 0,
+            failureReports: Number.isFinite(Number(raw.failureReports)) ? Number(raw.failureReports) : 0,
+        };
+    } catch (e) {
+        return { daysSinceService: 0, failureReports: 0 };
+    }
+}
+
+function saveOperatorHistory(history) {
+    try { localStorage.setItem(OPERATOR_HISTORY_KEY, JSON.stringify(history)); } catch (e) {}
+}
+
+/**
+ * Progress toward Phase 2 -- and deliberately NOT a promotion to it.
+ *
+ * It would be one line to flip `phase` once the failure count crosses the
+ * target, and the contract's validator would even allow it: it forbids Phase 2
+ * fields in Phase 1, not empty fields in Phase 2. But a vessel reporting Phase 2
+ * while serving no remaining-useful-life figure would be claiming a maturity the
+ * system cannot act on. The phase moves when there is an RUL model behind it.
+ * Until then this reports readiness, which is a true statement about the data.
+ */
+function renderMaturityReadout() {
+    const el = document.getElementById('outPhaseMaturity');
+    if (!el) return;
+    const { failureReports } = loadOperatorHistory();
+    const pct = Math.min(100, Math.round((failureReports / PHASE_2_FAILURE_TARGET) * 100));
+    el.innerHTML =
+        `<span class="text-sky-300">Phase 1</span>` +
+        `<span class="text-slate-500"> · ${failureReports}/${PHASE_2_FAILURE_TARGET} logged failures ` +
+        `toward Phase 2 (${pct}%)</span>`;
+}
+
+/** Confidence in the learned normal, worded rather than left as a bare number. */
+function baselineConfidenceWording(confidence) {
+    if (!Number.isFinite(confidence)) return { text: '--', cls: 'text-slate-400' };
+    const pct = Math.round(confidence * 100);
+    if (confidence < 0.25) return { text: `${pct}% — barely known`, cls: 'text-amber-300' };
+    if (confidence < 0.60) return { text: `${pct}% — provisional`, cls: 'text-amber-200' };
+    return { text: `${pct}% — established`, cls: 'text-emerald-300' };
+}
+
+/**
+ * Paint the diagnostics card.
+ *
+ * Four slots, and what may go in them is constrained by the same contract the
+ * API enforces. A Phase 1 unit may name the deviating STREAM; it may not name a
+ * component, a part, a repair date or an expected downtime. Those four are
+ * rejected by `MaintenanceStatus`'s validator, so a card that showed them could
+ * only ever be showing numbers this system did not produce.
+ *
+ * Every value below is a field the detector already returns.
+ */
 function renderMaintenanceStatus() {
     const el = document.getElementById('txtEnginePrediction');
     const s = State.maintenance.status;
+    renderMaturityReadout();
     if (!el || !s) return;
 
     const pct = Math.round((Number(s.anomalyScore) || 0) * 100);
     const top = (s.streams && s.streams[0]) || null;
-    const provenance = s.baselineFitted
-        ? 'Phase 1 detector · baseline fitted to this vessel'
-        : 'Phase 1 detector · reference baseline';
+    const conf = baselineConfidenceWording(Number(s.baselineConfidence));
 
-    if (s.isAnomalous && top) {
-        el.innerHTML =
-            `<span class='text-amber-300'>Anomaly ${pct}% — ${top.label} ` +
-            `(${Number(top.zScore) >= 0 ? '+' : ''}${Number(top.zScore).toFixed(1)}σ, ` +
-            `${Math.round(Number(top.contributionPct) || 0)}% of score).</span>` +
-            `<span class='block text-slate-500 text-[0.75rem] mt-0.5'>${provenance}. ` +
-            `Phase 1 names the stream, never the part or a date.</span>`;
-    } else {
-        el.innerHTML =
-            `<span class='text-emerald-300'>No anomaly — engine within its learned normal ` +
-            `(${pct}%).</span>` +
-            `<span class='block text-slate-500 text-[0.75rem] mt-0.5'>${provenance}.</span>`;
-    }
+    const headline = s.isAnomalous
+        ? `<span class="text-amber-300 font-semibold">Anomaly ${pct}%</span>`
+        : `<span class="text-emerald-300 font-semibold">No anomaly ${pct}%</span>`;
+
+    // Slot 1 -- deviating streams. Ranked, and shown even when healthy: which
+    // channel sits closest to its limit is trending information, and a blank
+    // panel is not.
+    const streamRows = (s.streams || []).length
+        ? s.streams.map(st => {
+            const z = Number(st.zScore);
+            const trend = Number.isFinite(Number(st.trendMinutes)) && Number(st.trendMinutes) > 0
+                ? ` · ${Math.round(Number(st.trendMinutes))} min`
+                : '';
+            return `<div class="flex justify-between gap-2 text-xs">
+                        <span class="truncate text-slate-300">${st.label}</span>
+                        <span class="hud-font shrink-0 ${Math.abs(z) >= 3 ? 'text-amber-300' : 'text-slate-400'}">${z >= 0 ? '+' : ''}${z.toFixed(1)}σ${trend}</span>
+                    </div>`;
+        }).join('')
+        : '<div class="text-xs text-slate-500">No stream deviating.</div>';
+
+    const contribution = top
+        ? `${Math.round(Number(top.contributionPct) || 0)}% — ${top.label}`
+        : '--';
+
+    const duty = s.duty
+        ? `${Number(s.duty.severityIndex).toFixed(2)}× · mostly ${s.duty.dominantBand}`
+        : 'rating not supplied';
+
+    const provenance = s.baselineFitted
+        ? 'baseline fitted to this vessel'
+        : 'reference baseline';
+
+    // The guard-checked sentence. `advisorySource` names whichever model actually
+    // wrote it, or "template" when the rewrite was rejected and the deterministic
+    // wording stood -- so a misbehaving model degrades the prose visibly and never
+    // the numbers.
+    const advisory = s.advisoryEn
+        ? `<div class="pt-2 mt-1 border-t border-slate-800 space-y-1">
+               <div class="text-xs text-slate-200">${s.advisoryEn}</div>
+               ${s.advisoryFil ? `<div class="text-xs text-slate-400 italic">${s.advisoryFil}</div>` : ''}
+               <div class="text-[0.62rem] text-slate-600 tracking-wider uppercase">Wording: ${s.advisorySource || 'template'} · numbers checked against the template</div>
+           </div>`
+        : '';
+
+    el.innerHTML = `
+        <div class="flex items-baseline justify-between gap-2 mb-2">
+            ${headline}
+            <span class="text-[0.62rem] text-slate-500 tracking-wider uppercase">Phase 1 · ${provenance}</span>
+        </div>
+        <div class="grid grid-cols-2 gap-x-3 gap-y-2">
+            <div class="col-span-2">
+                <div class="text-[0.62rem] text-slate-500 tracking-wider uppercase mb-0.5">Deviating stream(s)</div>
+                ${streamRows}
+            </div>
+            <div>
+                <div class="text-[0.62rem] text-slate-500 tracking-wider uppercase mb-0.5">Confidence in normal</div>
+                <div class="text-xs ${conf.cls} hud-font">${conf.text}</div>
+            </div>
+            <div>
+                <div class="text-[0.62rem] text-slate-500 tracking-wider uppercase mb-0.5">Largest contributor</div>
+                <div class="text-xs text-slate-300 hud-font truncate">${contribution}</div>
+            </div>
+            <div>
+                <div class="text-[0.62rem] text-slate-500 tracking-wider uppercase mb-0.5">Duty severity</div>
+                <div class="text-xs text-slate-300 hud-font truncate">${duty}</div>
+            </div>
+            <div>
+                <div class="text-[0.62rem] text-slate-500 tracking-wider uppercase mb-0.5">Run-hours observed</div>
+                <div class="text-xs text-slate-300 hud-font">${Number(s.observedHours || 0).toFixed(2)} h</div>
+            </div>
+        </div>
+        ${advisory}
+        <div class="text-[0.62rem] text-slate-600 mt-2 leading-snug">
+            Phase 1 names the deviating stream. It does not name a component, a part, a repair date or a downtime — those need failure history this vessel does not have yet.
+        </div>`;
 }
 
 /** Paint the fault-simulation panel: baseline progress, injected fault, latency. */
@@ -5018,6 +5165,7 @@ function refreshAnalyticsSidebar() {
                     batteryV: batteryBaseV,
                     particulatePpm: particulateBase,
                     noxPpm: noxBase,
+                    engineRpm: rpm,
                 });
             } else {
                 // Standby / Off display state when voyage has not started or has completed
@@ -6006,6 +6154,25 @@ function refreshAnalyticsSidebar() {
                 faultSelect.addEventListener('change', (e) => setMaintenanceFault(e.target.value));
             }
             renderMaintenanceSimPanel();
+
+            // Operator log. Restored from the last session rather than reset on
+            // load: these are facts about the vessel, not about this voyage.
+            const history = loadOperatorHistory();
+            const daysEl = document.getElementById('inDaysSinceService');
+            const failEl = document.getElementById('inFailureReports');
+            if (daysEl) daysEl.value = history.daysSinceService;
+            if (failEl) failEl.value = history.failureReports;
+
+            const persistHistory = () => {
+                saveOperatorHistory({
+                    daysSinceService: Math.max(0, Number(daysEl?.value) || 0),
+                    failureReports: Math.max(0, Number(failEl?.value) || 0),
+                });
+                renderMaturityReadout();
+            };
+            daysEl?.addEventListener('change', persistHistory);
+            failEl?.addEventListener('change', persistHistory);
+            renderMaturityReadout();
 
             // Operating instructions. The driver.js tour walks the interface;
             // this is the version you can read at your own pace and scroll back in.

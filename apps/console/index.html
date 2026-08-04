@@ -1710,6 +1710,34 @@
                             AI monitoring standby. Awaiting telemetry stream.
                         </div>
 
+                        <!-- Operator-entered maintenance history.
+                             Two facts the vessel cannot measure. The failure count is
+                             the input that makes the Phase 1 -> Phase 2 maturity gate
+                             real: the phase is gated on labelled failure history, and
+                             nothing in the system could previously record any. It
+                             reports PROGRESS toward Phase 2 and never flips the phase,
+                             because a vessel claiming Phase 2 while serving no
+                             remaining-useful-life figure would be claiming a maturity
+                             it cannot act on. -->
+                        <div class="bg-slate-950/80 border border-slate-800/80 rounded-lg p-3 space-y-2">
+                            <div class="text-xs font-bold text-sky-400 flex items-center gap-1.5 uppercase tracking-wider">
+                                <i class="fa-solid fa-clipboard-list text-sky-400"></i> Operator log
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs text-slate-400 mb-1" for="inDaysSinceService">Days since last service</label>
+                                    <input type="number" id="inDaysSinceService" value="0" min="0" step="1"
+                                           class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-orange-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-400 mb-1" for="inFailureReports">Logged failures</label>
+                                    <input type="number" id="inFailureReports" value="0" min="0" step="1"
+                                           class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-orange-500 outline-none">
+                                </div>
+                            </div>
+                            <div id="outPhaseMaturity" class="text-xs pt-1 border-t border-slate-800"></div>
+                        </div>
+
                         <!-- Fault injection harness.
                              The dropdown perturbs the SIMULATED telemetry only. Nothing
                              about the selection is sent to the detector -- it receives
