@@ -96,7 +96,13 @@ import "driver.js/dist/driver.css";
             // throttle change between samples would be invisible to a
             // post-hoc sum, and the logger's timestamps are wall-clock while
             // the voyage runs at the sim multiplier.
-            ship: { progress: 0, lat: 10.6928, lng: 122.5644, angle: 0, headingDeg: 0, targetHeadingDeg: 0, actualKnots: 0, distanceTraveledNM: 0, fuelUsedL: 0, currentPax: null, steering: false },
+            // runHours is SIMULATED engine run-time, accumulated on the same step
+            // and the same clock as distanceTraveledNM and fuelUsedL (see the note
+            // there): simMult * deltaTime / 3600. It is the denominator predictive
+            // maintenance reasons in -- degradation rates are per run-hour, and
+            // detection latency is reported in run-hours -- so metering it in
+            // wall-clock would make a 1000x voyage look like it ran for two minutes.
+            ship: { progress: 0, lat: 10.6928, lng: 122.5644, angle: 0, headingDeg: 0, targetHeadingDeg: 0, actualKnots: 0, distanceTraveledNM: 0, fuelUsedL: 0, runHours: 0, currentPax: null, steering: false },
             
             basePath: [],     
             targetPath: [],   
@@ -125,6 +131,16 @@ import "driver.js/dist/driver.css";
                 status: null,
                 lastCallMs: 0,
                 inFlight: false,
+                // --- fault simulation ---
+                // `fault` is the preset key the OPERATOR selected. It never leaves
+                // this object: the payload posted to /api/maintenance carries sensor
+                // values only, so the detector cannot know a fault was injected or
+                // which one. That blindness is the entire point -- a detector told
+                // what to look for proves nothing.
+                fault: 'healthy',
+                faultStartHours: null,
+                detectedAtHours: null,
+                lastSampleHours: -Infinity,
             },
             aiStrategy: ""
         };
@@ -431,6 +447,14 @@ import "driver.js/dist/driver.css";
             State.ship.progress = 0;
             State.ship.distanceTraveledNM = 0;
             State.ship.fuelUsedL = 0;
+            // Run-hours and the learned baseline are ENGINE state, not voyage state:
+            // swapping ports does not make the engine younger, so the three
+            // voyage-level resets deliberately leave both alone. Clearing the ports
+            // is the teardown that ends this engine's life in the session, so both
+            // go here and only here -- otherwise detection latency would be measured
+            // against a clock that restarted mid-fault.
+            State.ship.runHours = 0;
+            resetMaintenanceSim();
             State.basePath = [];
             State.targetPath = [];
             State.idealPath = [];
@@ -2561,6 +2585,206 @@ const MAINTENANCE_WINDOW_FRAMES = 60;
 const MAINTENANCE_INTERVAL_MS = 15000;
 
 /**
+ * Simulated run-time between telemetry frames.
+ *
+ * Frames are sampled on the SIMULATED clock, not the wall clock. That is what
+ * makes a fault-injection rate quotable: a preset that says "+0.4 °C per run-hour"
+ * means exactly that, whatever speed multiplier the voyage is running at, and the
+ * 150 frames the detector needs cover 12.5 simulated hours rather than an
+ * arbitrary 150 seconds of somebody watching a screen.
+ *
+ * The interval is set by the length of a crossing, which is the hard constraint.
+ * An Iloilo Strait run at the 25-minute target ETA is about 0.42 run-hours, and
+ * the detector needs 90 baseline frames plus a 60-frame window before it can
+ * produce any score at all. At 10 simulated seconds a frame that is:
+ *
+ *     baseline 0.250 run-h + window 0.167 run-h = first score at 0.417 run-h
+ *
+ * -- which just fits one crossing. A coarser interval was tried first (5, then 1
+ * simulated minute) and could not: at 1 minute a frame the baseline alone needed
+ * 1.5 run-hours, roughly four crossings, and the panel sat at "Learning 14/90"
+ * for an entire voyage. 10 seconds is also a realistic condition-monitoring rate
+ * in its own right, so nothing is distorted to reach it.
+ *
+ * The intended flow is still two crossings: the first fits this engine's healthy
+ * baseline, the second injects a fault. That matches how a real baseline is
+ * built -- over days of normal running, not in one trip -- and it works because
+ * the baseline and run-hours deliberately survive a voyage reset (see the note
+ * in the port-clearing teardown).
+ */
+const MAINTENANCE_SAMPLE_RUN_HOURS = 10 / 3600;
+
+/**
+ * Injectable engine faults, as degradation RATES PER RUN-HOUR.
+ *
+ * Every preset is a multi-stream signature, because real faults are. A cooling
+ * system fouling does not only raise coolant temperature -- it pushes exhaust gas
+ * temperature up with it and drags oil pressure down as the oil thins. Modelling
+ * one channel at a time would only ever exercise the univariate half of the
+ * detector and would leave the PCA half, which exists precisely to catch joint
+ * patterns, doing nothing.
+ *
+ * `load_decoupled` is the important one. Coolant rises while exhaust temperature
+ * FALLS, which cannot happen on a healthy engine at steady load but leaves both
+ * readings inside their normal limits. It is the exact failure `baseline.py`
+ * cites to justify keeping a PCA model at all, and it is the one preset where
+ * the univariate half is measurably blind: at the moment of detection the
+ * largest single-channel z-score is 1.2 against a 3-sigma limit, while the PCA
+ * residual sits 1.31x over its reference.
+ *
+ * MEASURED, not assumed. Every rate below was fitted by running these presets
+ * through the real detector (services/maintenance/) over six seeds:
+ *
+ *   preset            latency (run-hours), 6 seeds                 stream it names
+ *   bearing_wear      0.053 0.056 0.064 0.064 0.067 0.067        particulate  6/6
+ *   alternator        0.053 0.067 0.069 0.072 0.081 0.083        battery      5/6
+ *   load_decoupled    0.114 0.128 0.142 0.156 0.189 0.192        coolant      4/6
+ *   cooling_fouling   0.139 0.139 0.144 0.181 0.211 0.222        coolant      5/6
+ *
+ * Two findings worth recording, because both are properties of the DETECTOR and
+ * not of this file:
+ *
+ * 1. **The PCA half always fires first.** Across every rate tried, including a
+ *    battery decaying at 0.25 V/run-hour, the joint-pattern residual crossed its
+ *    reference while the largest single-channel z-score was still under 2 against
+ *    a 3-sigma limit. No preset here demonstrates a univariate-only catch,
+ *    because none could be made to. `load_decoupled` is the clearest case: caught
+ *    with max |z| = 1.20 and a PCA residual 1.31x over reference.
+ *
+ * 2. **Feeding seven streams instead of three roughly doubles the false-alarm
+ *    rate.** On healthy telemetry, measured like-for-like over 3000 scores:
+ *    3 streams 2.30% of scores flagged, 7 streams 4.20%. The univariate half
+ *    takes a MAX over channels, so every channel added is another chance to
+ *    cross. That is the cost of the extra fault coverage the four new streams
+ *    buy, and it is why some of the mixed attribution above is a false positive
+ *    that happened to fire first rather than the injected fault being misread.
+ *    ANOMALY_THRESHOLD in services/maintenance/detector.py is the dial for this;
+ *    it has deliberately NOT been touched here, because it governs the shipped
+ *    detector's behaviour and that is not a simulator's call to make.
+ */
+const MAINTENANCE_FAULT_PRESETS = {
+    healthy: {
+        label: 'Healthy — no injected fault',
+        blurb: 'Baseline behaviour. Any anomaly here is a false positive.',
+        rates: {},
+    },
+    alternator: {
+        label: 'Charging circuit degradation',
+        blurb: 'Regulator losing charging voltage. Single channel; caught in ~0.07 run-hours.',
+        rates: { batteryV: -1.8 },
+        floors: { batteryV: 11.4 },
+    },
+    cooling_fouling: {
+        label: 'Cooling system fouling',
+        blurb: 'Heat exchanger silting up: coolant and exhaust climb, oil pressure sags. Slowest to catch.',
+        rates: { coolantC: 9.0, egtC: 34.0, oilKpa: -14.0 },
+        ceilings: { coolantC: 118 },
+    },
+    bearing_wear: {
+        label: 'Bearing wear',
+        blurb: 'Vibration energy and oil debris rise together; exhaust follows. Fastest to catch.',
+        rates: { vibG: 0.10, particulatePpm: 18.0, egtC: 11.0 },
+    },
+    load_decoupled: {
+        label: 'Load-decoupled drift (PCA-only)',
+        blurb: 'Coolant up while exhaust falls. Every channel stays in range — only the joint pattern breaks.',
+        rates: { coolantC: 11.0, egtC: -26.0 },
+        ceilings: { coolantC: 96 },
+    },
+};
+
+/**
+ * Age the selected fault and return the per-channel offsets to add to healthy
+ * telemetry.
+ *
+ * Offsets are linear in elapsed run-hours since injection. Linear is deliberate:
+ * a real degradation curve is not linear, but an invented curve shape would be
+ * unfalsifiable decoration, whereas a stated constant rate is a number a marine
+ * engineer can argue with. The known limitation is written down rather than
+ * dressed up.
+ */
+function maintenanceFaultOffsets() {
+    const m = State.maintenance;
+    const preset = MAINTENANCE_FAULT_PRESETS[m.fault];
+    if (!preset || !preset.rates || m.faultStartHours == null) return {};
+
+    const elapsed = Math.max(0, (State.ship.runHours || 0) - m.faultStartHours);
+    const out = {};
+    for (const [channel, perHour] of Object.entries(preset.rates)) {
+        out[channel] = perHour * elapsed;
+    }
+    return out;
+}
+
+/** Clamp a faulted reading to the preset's stated floor/ceiling, if it has one. */
+function applyFaultLimit(preset, channel, value) {
+    const floor = preset && preset.floors ? preset.floors[channel] : undefined;
+    const ceil = preset && preset.ceilings ? preset.ceilings[channel] : undefined;
+    let v = value;
+    if (Number.isFinite(floor)) v = Math.max(floor, v);
+    if (Number.isFinite(ceil)) v = Math.min(ceil, v);
+    return v;
+}
+
+/**
+ * Select an injected fault. Deliberately does NOT touch the learned baseline.
+ *
+ * This is the whole integrity argument for the feature. The baseline is what the
+ * detector believes "normal" is, and it is fitted from the first 90 frames. If
+ * selecting a fault refitted the baseline, the baseline would be fitted OVER the
+ * developing fault -- and a detector whose normal already contains the fault will
+ * never flag it. `collectMaintenanceFrame` already carries that warning; this
+ * function is where it would actually have been violated.
+ *
+ * So: the fault control stays locked until the baseline is complete and healthy,
+ * and switching a fault clears only the scoring window and the detection clock.
+ */
+function setMaintenanceFault(key) {
+    const m = State.maintenance;
+    if (!MAINTENANCE_FAULT_PRESETS[key]) return;
+    if (m.baseline.length < MAINTENANCE_BASELINE_FRAMES) {
+        log('Fault injection is locked until the healthy baseline is complete.', 'warn');
+        renderMaintenanceSimPanel();
+        return;
+    }
+    if (m.fault === key) return;
+
+    m.fault = key;
+    // The scoring window is deliberately NOT cleared. It should straddle the
+    // moment of onset: that is what a real detector sees, a window sliding across
+    // the start of a fault, and it is the only way the reported latency means
+    // anything. Clearing it was tried first and made every preset detect at
+    // exactly 5.00 run-hours -- the instant the window refilled -- because the
+    // fault had been developing unscored the whole time the window was empty.
+    m.detectedAtHours = null;
+    m.status = null;
+    m.faultStartHours = key === 'healthy' ? null : (State.ship.runHours || 0);
+
+    const preset = MAINTENANCE_FAULT_PRESETS[key];
+    if (key === 'healthy') {
+        log('Fault injection cleared. Telemetry returns to healthy behaviour.', 'info');
+    } else {
+        log(`Fault injected at ${(State.ship.runHours || 0).toFixed(2)} run-hours: ${preset.label}. `
+            + 'The detector is not told — it sees sensor values only.', 'warn');
+    }
+    renderMaintenanceSimPanel();
+}
+
+/** Drop every learned thing about this engine. Full teardown only -- see the
+ *  note in setMaintenanceFault for why a fault change must never come here. */
+function resetMaintenanceSim() {
+    const m = State.maintenance;
+    m.baseline = [];
+    m.frames = [];
+    m.status = null;
+    m.lastCallMs = 0;
+    m.faultStartHours = null;
+    m.detectedAtHours = null;
+    m.lastSampleHours = -Infinity;
+    renderMaintenanceSimPanel();
+}
+
+/**
  * Buffer one telemetry frame, then score the window when there is enough of it.
  *
  * The first 90 frames become this vessel's baseline and are never scored against
@@ -2571,23 +2795,65 @@ const MAINTENANCE_INTERVAL_MS = 15000;
  * that the fault is normal, which is the one failure mode that cannot be seen
  * from the outside.
  */
-function collectMaintenanceFrame({ coolantC, oilBar, egtC }) {
+function collectMaintenanceFrame({ coolantC, oilBar, egtC, vibG, batteryV, particulatePpm, noxPpm }) {
     const m = State.maintenance;
     if (!Number.isFinite(coolantC) || !Number.isFinite(oilBar) || !Number.isFinite(egtC)) return;
+
+    // Sample on the simulated clock. Without this gate the window is 150 wall
+    // seconds of whatever the screen happened to be doing; with it, the window is
+    // a stated span of engine run-time and the injected rates mean something.
+    const runHours = State.ship.runHours || 0;
+    if (runHours - m.lastSampleHours < MAINTENANCE_SAMPLE_RUN_HOURS) return;
+    m.lastSampleHours = runHours;
+
+    const preset = MAINTENANCE_FAULT_PRESETS[m.fault] || MAINTENANCE_FAULT_PRESETS.healthy;
+    const off = maintenanceFaultOffsets();
+
+    const faultedCoolant = applyFaultLimit(preset, 'coolantC', coolantC + (off.coolantC || 0));
+    const faultedEgt = applyFaultLimit(preset, 'egtC', egtC + (off.egtC || 0));
+    const faultedOilKpa = applyFaultLimit(preset, 'oilKpa', oilBar * 100 + (off.oilKpa || 0));
+    const faultedBatteryV = applyFaultLimit(preset, 'batteryV', batteryV + (off.batteryV || 0));
+    const faultedParticulate = Math.max(0, particulatePpm + (off.particulatePpm || 0));
+    const faultedVibG = Math.max(0.001, vibG + (off.vibG || 0));
+
+    // The contract has no vibration scalar -- it has a 3-axis accelerometer, and
+    // the detector derives vibration as the de-meaned RMS ACROSS THE WINDOW
+    // (services/maintenance/baseline.py::_vibration_rms). So the energy has to be
+    // carried in the frame-to-frame FLUCTUATION, not in the level: three steady
+    // axes, however large, read as zero vibration.
+    //
+    // Each axis gets a uniform draw of half-width `faultedVibG`, whose variance is
+    // a^2/3; summed over three axes and square-rooted that returns a, so the RMS
+    // the detector recovers is the amplitude asked for here. Gravity sits on z and
+    // is removed by the de-meaning, but it is included so the frame is a plausible
+    // IMU reading rather than a number shaped to fit the test.
+    const axis = () => faultedVibG * (Math.random() * 2 - 1);
 
     const frame = {
         vessel_id: 'MV-CONSOLE-01',
         ts: new Date().toISOString(),
         source: 'simulator',
         electro_mechanical: {
-            coolant_temp_c: Number(coolantC.toFixed(2)),
-            oil_pressure_kpa: Number((oilBar * 100).toFixed(1)),  // bar -> kPa
-            exhaust_gas_temp_c: Number(egtC.toFixed(1)),
+            coolant_temp_c: Number(faultedCoolant.toFixed(2)),
+            oil_pressure_kpa: Number(faultedOilKpa.toFixed(1)),  // bar -> kPa at the call site
+            exhaust_gas_temp_c: Number(faultedEgt.toFixed(1)),
+            battery_voltage_v: Number(faultedBatteryV.toFixed(2)),
+            oil_particulate_ppm: Number(faultedParticulate.toFixed(2)),
+            exhaust_nox_ppm: Number(Math.max(0, noxPpm).toFixed(1)),
+            accel_x_g: Number(axis().toFixed(5)),
+            accel_y_g: Number(axis().toFixed(5)),
+            accel_z_g: Number((1.0 + axis()).toFixed(5)),
+            engine_hours: Number(runHours.toFixed(3)),
         },
     };
 
+    // The baseline is this engine's definition of normal, so it is only ever
+    // collected while no fault is injected. setMaintenanceFault keeps the control
+    // locked until this is full, which is what stops a baseline being fitted over
+    // a developing fault -- the one failure that cannot be seen from the outside.
     if (m.baseline.length < MAINTENANCE_BASELINE_FRAMES) {
-        m.baseline.push(frame);
+        if (m.fault === 'healthy') m.baseline.push(frame);
+        renderMaintenanceSimPanel();
         return;
     }
     m.frames.push(frame);
@@ -2599,21 +2865,54 @@ function collectMaintenanceFrame({ coolantC, oilBar, egtC }) {
     m.lastCallMs = now;
     m.inFlight = true;
 
+    // NOTE: sensor values only. `m.fault`, `m.faultStartHours` and the preset name
+    // are deliberately absent from this payload -- the detector must not be able
+    // to know a fault was injected, or the detection it reports proves nothing.
     fetch('/api/maintenance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             frames: m.frames.slice(),
             baselineFrames: m.baseline,
-            observedHours: (State.ship.distanceTraveledNM || 0) / 12,
+            observedHours: runHours,
         }),
     })
         .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
-        .then(data => { m.status = data; renderMaintenanceStatus(); })
+        .then(data => { m.status = data; noteMaintenanceDetection(); renderMaintenanceStatus(); })
         // Offline is a state, not a crash: the strip keeps its last reading and
         // says nothing new, exactly as the throttle and route panels do.
         .catch(() => { m.status = null; renderMaintenanceStatus(); })
         .finally(() => { m.inFlight = false; });
+}
+
+/**
+ * Record the first crossing of the anomaly threshold after a fault was injected.
+ *
+ * This is the number the whole simulation exists to produce: how much engine
+ * run-time passed between a fault starting and the detector calling it. A green
+ * light turning amber is a demo; "flagged after 3.2 run-hours at 61%, naming
+ * coolant temperature as 74% of the signal" is a result.
+ *
+ * Only the FIRST crossing counts -- later scores are the same detection, and
+ * re-stamping the clock on each one would report a latency of nearly zero.
+ */
+function noteMaintenanceDetection() {
+    const m = State.maintenance;
+    if (m.detectedAtHours != null) return;
+    if (m.faultStartHours == null) return;
+    if (!m.status || !m.status.isAnomalous) return;
+
+    m.detectedAtHours = State.ship.runHours || 0;
+    const latency = m.detectedAtHours - m.faultStartHours;
+    const preset = MAINTENANCE_FAULT_PRESETS[m.fault];
+    const top = (m.status.streams && m.status.streams[0]) || null;
+    const pct = Math.round((Number(m.status.anomalyScore) || 0) * 100);
+    const attribution = top
+        ? `, naming ${top.label} as ${Math.round(Number(top.contributionPct) || 0)}% of the signal`
+        : '';
+    log(`Phase 1 detected "${preset.label}" after ${latency.toFixed(2)} run-hours `
+        + `at ${pct}% anomaly${attribution}.`, 'alert');
+    renderMaintenanceSimPanel();
 }
 
 /** Paint the API's verdict. The console forms no opinion of its own here. */
@@ -2640,6 +2939,59 @@ function renderMaintenanceStatus() {
             `<span class='text-emerald-300'>No anomaly — engine within its learned normal ` +
             `(${pct}%).</span>` +
             `<span class='block text-slate-500 text-[0.75rem] mt-0.5'>${provenance}.</span>`;
+    }
+}
+
+/** Paint the fault-simulation panel: baseline progress, injected fault, latency. */
+function renderMaintenanceSimPanel() {
+    const m = State.maintenance;
+    const sel = document.getElementById('selMaintFault');
+    const baselineEl = document.getElementById('outMaintBaseline');
+    const latencyEl = document.getElementById('outMaintLatency');
+    const hoursEl = document.getElementById('outMaintRunHours');
+    const noteEl = document.getElementById('txtMaintFaultNote');
+
+    const ready = m.baseline.length >= MAINTENANCE_BASELINE_FRAMES;
+
+    if (sel) {
+        sel.value = m.fault;
+        sel.disabled = !ready;
+        sel.title = ready
+            ? 'Injects a fault into the simulated telemetry. The detector is not told.'
+            : 'Locked until the healthy baseline is complete — a baseline fitted over a fault would learn the fault as normal.';
+    }
+
+    if (baselineEl) {
+        baselineEl.textContent = ready
+            ? `Fitted (${MAINTENANCE_BASELINE_FRAMES} frames)`
+            : `Learning ${m.baseline.length}/${MAINTENANCE_BASELINE_FRAMES}`;
+        baselineEl.className = ready
+            ? 'font-bold text-emerald-300 hud-font text-sm truncate'
+            : 'font-bold text-amber-300 hud-font text-sm truncate';
+    }
+
+    if (hoursEl) hoursEl.textContent = `${(State.ship.runHours || 0).toFixed(2)} h`;
+
+    if (latencyEl) {
+        if (m.detectedAtHours != null && m.faultStartHours != null) {
+            latencyEl.textContent = `${(m.detectedAtHours - m.faultStartHours).toFixed(2)} run-h`;
+            latencyEl.className = 'font-bold text-amber-300 hud-font text-sm truncate';
+        } else if (m.faultStartHours != null) {
+            const elapsed = (State.ship.runHours || 0) - m.faultStartHours;
+            latencyEl.textContent = `undetected · ${elapsed.toFixed(2)} run-h`;
+            latencyEl.className = 'font-bold text-slate-300 hud-font text-sm truncate';
+        } else {
+            latencyEl.textContent = '--';
+            latencyEl.className = 'font-bold text-slate-400 hud-font text-sm truncate';
+        }
+    }
+
+    if (noteEl) {
+        const preset = MAINTENANCE_FAULT_PRESETS[m.fault];
+        noteEl.textContent = ready
+            ? (preset ? preset.blurb : '')
+            : 'Collecting this engine\'s healthy normal — about one full crossing. It carries over '
+              + 'between voyages, so injection usually unlocks on the second run.';
     }
 }
 
@@ -4610,18 +4962,6 @@ function refreshAnalyticsSidebar() {
                     
                     State.mlLogger.data.push(record);
 
-                    // Same 1Hz tick, telemetry in the API's own contract shape.
-                    // Units converted here, not hoped for: the console works in
-                    // bar, the contract in kPa, and a factor of 100 on oil
-                    // pressure would read as a catastrophic fault rather than a
-                    // bug. Channels this sim does not produce are simply absent
-                    // -- the detector masks what a retrofit kit does not report.
-                    collectMaintenanceFrame({
-                        coolantC: Number(cooling),
-                        oilBar: Number(lube),
-                        egtC: Number(egt),
-                    });
-
                     const badge = document.getElementById('badgeLoggerStatus');
                     const txtCount = document.getElementById('txtRecordCount');
                     if (badge) {
@@ -4643,6 +4983,42 @@ function refreshAnalyticsSidebar() {
                         window.updateAnalyticsChart();
                     }
                 }
+
+                // Engine health telemetry, in the API's own contract shape.
+                //
+                // Deliberately OUTSIDE the 1 Hz logger gate above. It used to sit
+                // inside it, which capped frames at one per WALL second -- and since
+                // a crossing at 120x lasts about 13 wall-seconds, the baseline could
+                // only ever reach ~14 of the 90 frames it needs, no matter how long
+                // you watched. Out here it runs every physics tick and
+                // MAINTENANCE_SAMPLE_RUN_HOURS decides the spacing, so a frame is
+                // always the same stretch of SIMULATED engine time whatever speed
+                // multiplier is selected. That is the difference between a stated
+                // degradation rate meaning something and it meaning nothing.
+                //
+                // Units are converted here, not hoped for: the console works in bar,
+                // the contract in kPa, and vibration is in g rather than the mm/s the
+                // telemetry strip shows, because the contract is an accelerometer.
+                const vibBaseG = 0.020 + (load * 0.055) + (p.waveHt * 0.010);
+                const batteryBaseV = rpm > 0 ? 13.9 + (Math.random() * 0.10 - 0.05) : 12.5;
+                // Oil debris is noise around a constant, with NO run-hours trend. A
+                // gentle monotonic creep was tried and removed: against the tight
+                // scale the baseline learns, a steady drift is indistinguishable from
+                // a developing fault, and it made the HEALTHY preset score 0.86 with
+                // particulate blamed for 76% of it. A false positive on a healthy
+                // engine is the one result this harness must never produce.
+                const particulateBase = 11.0 + (Math.random() * 0.8);
+                const noxBase = 240 + (load * 620) + (Math.random() * 12);
+
+                collectMaintenanceFrame({
+                    coolantC: Number(cooling),
+                    oilBar: Number(lube),
+                    egtC: Number(egt),
+                    vibG: vibBaseG,
+                    batteryV: batteryBaseV,
+                    particulatePpm: particulateBase,
+                    noxPpm: noxBase,
+                });
             } else {
                 // Standby / Off display state when voyage has not started or has completed
                 updateDisplayValue('valFlow', '--');
@@ -5044,6 +5420,9 @@ function refreshAnalyticsSidebar() {
                 // burning against the throttle. Reuses the flow the display loop
                 // already computed this frame rather than running the physics a
                 // second time. Same integral, same clock as the auto branch.
+                // Run-hours on the same step and the same clock as distance above.
+                State.ship.runHours = (State.ship.runHours || 0) + (simMult * deltaTime) / 3600;
+
                 const manualFlowLh = State.ship.lastFuelFlowLh || 0;
                 if (manualFlowLh > 0) {
                     State.ship.fuelUsedL = (State.ship.fuelUsedL || 0)
@@ -5148,6 +5527,10 @@ function refreshAnalyticsSidebar() {
                     State.ship.fuelUsedL = (State.ship.fuelUsedL || 0)
                         + (physics.fuelFlowLh * simMult * deltaTime) / 3600;
                 }
+
+                // Run-hours, same step and same clock again. Predictive maintenance
+                // samples and ages the injected fault against this, never wall-clock.
+                State.ship.runHours = (State.ship.runHours || 0) + (simMult * deltaTime) / 3600;
 
                 let safeTotalDistNM = isNaN(totalDistNM) || totalDistNM <= 0 ? 5.0 : totalDistNM;
                 let progressPerSecond = (actualKnots / Math.max(0.1, safeTotalDistNM)) / 3600;
@@ -5613,6 +5996,16 @@ function refreshAnalyticsSidebar() {
                     }
                 });
             }
+
+            // Fault injection. setMaintenanceFault owns the rules -- it refuses
+            // while the baseline is still learning, and it never refits the
+            // baseline, which is what keeps the injected fault out of the
+            // detector's idea of normal.
+            const faultSelect = document.getElementById('selMaintFault');
+            if (faultSelect) {
+                faultSelect.addEventListener('change', (e) => setMaintenanceFault(e.target.value));
+            }
+            renderMaintenanceSimPanel();
 
             // Operating instructions. The driver.js tour walks the interface;
             // this is the version you can read at your own pace and scroll back in.

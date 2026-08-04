@@ -1709,6 +1709,44 @@
                         <div id="txtEnginePrediction" class="bg-slate-950/80 border border-slate-800/80 rounded-lg p-3 text-sm text-slate-200 leading-relaxed font-sans">
                             AI monitoring standby. Awaiting telemetry stream.
                         </div>
+
+                        <!-- Fault injection harness.
+                             The dropdown perturbs the SIMULATED telemetry only. Nothing
+                             about the selection is sent to the detector -- it receives
+                             sensor values and nothing else -- so the detection reported
+                             above is a real catch, not a replayed script.
+                             The control stays locked until this engine's healthy
+                             baseline is complete, because a baseline fitted over a
+                             developing fault learns the fault as normal. -->
+                        <div class="bg-slate-950/80 border border-slate-800/80 rounded-lg p-3 space-y-2">
+                            <div class="text-xs font-bold text-sky-400 flex items-center gap-1.5 uppercase tracking-wider">
+                                <i class="fa-solid fa-vial text-sky-400"></i> Fault Injection (simulation)
+                            </div>
+                            <select id="selMaintFault" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white focus:border-orange-500 outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                                <option value="healthy">Healthy — no injected fault</option>
+                                <option value="alternator">Alternator / charging fault</option>
+                                <option value="cooling_fouling">Cooling system fouling</option>
+                                <option value="bearing_wear">Bearing wear</option>
+                                <option value="load_decoupled">Load-decoupled drift (PCA-only)</option>
+                            </select>
+                            <div id="txtMaintFaultNote" class="text-xs text-slate-500 leading-snug">
+                                Collecting this engine's healthy normal. Fault injection unlocks when it is complete.
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 pt-1 border-t border-slate-800">
+                                <div>
+                                    <div class="text-xs text-slate-400">Baseline</div>
+                                    <div id="outMaintBaseline" class="font-bold text-amber-300 hud-font text-sm truncate">Learning 0/90</div>
+                                </div>
+                                <div>
+                                    <div class="text-xs text-slate-400">Run-hours</div>
+                                    <div id="outMaintRunHours" class="font-bold text-sky-300 hud-font text-sm truncate">0.00 h</div>
+                                </div>
+                                <div>
+                                    <div class="text-xs text-slate-400">Detection latency</div>
+                                    <div id="outMaintLatency" class="font-bold text-slate-400 hud-font text-sm truncate">--</div>
+                                </div>
+                            </div>
+                        </div>
                         <div id="boxAiAlert" class="hidden mt-2 bg-red-500/15 border border-red-500/40 rounded-lg p-3 space-y-1 shadow-[0_0_15px_rgba(244,63,94,0.15)]">
                             <div class="text-xs font-bold text-red-400 flex items-center gap-1.5 uppercase tracking-wider">
                                 <i class="fa-solid fa-triangle-exclamation text-red-400"></i> Critical AI Alert
