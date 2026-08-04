@@ -509,35 +509,219 @@ your answer to a hostile question.
 ## Slide 17 — Team & close
 
 **On slide:**
-- Team SOLMATE — roles.
-- One line: *"Marine-AI: less fuel, fewer breakdowns, and the receipts to prove
-  it — on the boats that are already out there."*
+
+| Member | Role | Contribution |
+|---|---|---|
+| **Jan Lynnard Sanchez Rolando** | Project Lead | Direction and scope. Retrofit hardware concept, and the first-generation AI work the shipped models grew out of |
+| **Adrian Justin Salinas** | AI & Software Lead | Owns the AI infrastructure end to end — the three modules, the trained models, the API, the console, and the data-ethics and deviations record |
+| **Ramiex Brylle Estudillo** | Hardware & Predictive Maintenance | Sensor and engine-loom specification; the degradation and duty-cycle mathematics behind Phase 1 |
+| **Kaiser Calasara** | Systems Logic & Hardware | Control and failure logic; predictive-maintenance modelling and the supporting mathematics |
+| **Angel Faithe Torrefranca** | Pitch & Communications | Narrative, delivery, and how the system is explained to operators and judges |
+
+- **Four of five of us are hardware people.** That is the point: this is a *retrofit*
+  for boats that already exist, specified by people who know the engine room, with the
+  AI built to serve it rather than the other way round.
+- One line: *"Marine-AI: less fuel, fewer breakdowns, and the receipts to prove it —
+  on the boats that are already out there."*
 - **Live demo: solmate-marine-ai.vercel.app** · repo · screencast · this deck.
 
-**Speaker notes:** Close on the retrofit promise and the honesty posture. Invite
-the Q&A — the deviations slide means we welcome the hard questions.
+**Speaker notes:** The rubric asks why this team is credible to build AND scale it.
+Answer with the split: a hardware-majority team means the sensor spec and the failure
+modes are real engineering judgement, not guesses from a laptop — and the AI lead built
+the whole software stack, so nothing here is outsourced or glued together. Close on the
+retrofit promise and the honesty posture, then invite Q&A: the deviations slide means
+we welcome the hard questions.
 
 ---
 
-## Appendix / backup slides (for Q&A, not in the main flow)
+## Slide 18 — RESERVE 01 · Dataset declarations
 
-- **A1 — Fuel model math:** the BSFC bathtub curve, the derived (not chosen)
-  enrichment coefficient, the idle-burn floor.
-- **A2 — Why ONNX earned its keep:** 358 MB → 85 MB; export gated at 1e-4 drift
-  (observed 1.5e-6).
-- **A3 — Route costing detail:** candidate sweep, per-leg optimiser reuse, the
-  1e-6 agreement test.
-- **A4 — The wear→fuel bridge:** EGT-excess-over-baseline as the wear signal
-  (**r = 0.97–0.997 at fixed load**, mean 0.986 across the seven load points),
-  ratio-against-healthy to cancel boundary bias. Say "at fixed load" out loud:
-  pooled across loads r is 0.86, because load moves both variables, and that is
-  exactly why `load_fraction` is the model's second feature rather than a
-  nuisance to be averaged away.
-- **A5 — Full deviations table** (12 deliberate departures from `DEVIATIONS.md`,
-  plus the "Still outstanding" table of what is not built yet). Bring both. The
-  second one is the harder slide and the more convincing one.
-- **A6 — The safety path:** the rule table, the thresholds, and the test that
-  fails if a model is ever imported into it.
+**On slide:**
+
+| Source | Format & size | Purpose | Preprocessing | Licence |
+|---|---|---|---|---|
+| UCI CBM (Coraddu et al., 2014) | CSV, 1,326 wear states | Wear→fuel penalty | Wear states held out of training; ratio-against-healthy cancels boundary bias | CC BY 4.0 |
+| Open-Meteo ERA5 archive | JSON, 2.5 yr × 9-pt grid | Wind/wave direction targets | sin/cos decomposition — direction is circular | CC BY 4.0 |
+| Open-Meteo Marine archive | JSON, same grid & range | Wave + current targets | Magnitudes → climatological lookup | CC BY 4.0 |
+| Sentinel-2 cloudless (EOX) | WMS raster, 2800×2154 | Basemap + helm land mask | Native 10 m/px; binarised to a water mask | CC BY 4.0 |
+| Natural Earth 10m | Shapefile | Chart coastline | Projected via `build_chart.normalise` | Public domain |
+| OpenSeaMap seamarks | Overpass JSON → 2.9 kB | 10 charted lights, 8 lit | Build-time fetch, committed extract | **ODbL 1.0** |
+
+- **Registered but consumed by nothing: NASA C-MAPSS.** It is the intended Phase 2
+  corpus and pretrains nothing today. `git grep cmapss -- '*.py'` returns
+  `data/registry.py` and nothing else.
+- **Every source is declared in `data/registry.py`, and the download tooling refuses
+  to fetch anything undeclared.** That is the control — not a policy sentence.
+
+**Speaker notes:** Lead with the registry: the code cannot fetch an undeclared source.
+If asked whether anything is scraped, the answer is no and the enforcement is
+mechanical. Volunteer C-MAPSS before they find it.
+
+---
+
+## Slide 19 — RESERVE 02 · AI tools & external resources
+
+**On slide:**
+
+| Component | What it is | Artefact | Origin |
+|---|---|---|---|
+| Fuel-wear model | XGBoost, 400 est. → **ONNX** | `fuel_degradation.onnx` (364 kB) | Trained by us on UCI CBM |
+| Route forecaster | XGBoost → **4 × ONNX** (wind/wave dir, sin+cos) | `models/route_forecast/` | Trained by us on Open-Meteo ERA5 |
+| Route magnitudes | Climatological lookup table | in-process | Derived by us |
+| Anomaly detector | Robust z-score + **PCA linear autoencoder** | pure NumPy, fitted at runtime | Written by us |
+| Advisory phrasing | **Claude Haiku 4.5**, Anthropic API | `services/advisory/phraser.py` | External — phrasing only |
+
+- **No third-party model weights ship in this repo.** Five ONNX files, all ours.
+- **Claude's scope, stated precisely:** it re-words a sentence the deterministic
+  modules already produced. The rewrite is **discarded** if it changes a number or
+  issues an order. `advisory_source` reports `"claude"` or `"template"` per frame,
+  visible on the console.
+
+**Speaker notes:** The question behind this slide is "how much of your AI is just an
+API call?" Answer: the API call writes English. Everything that produces a number was
+trained or written by us. Point at the provenance badge on the live console.
+
+---
+
+## Slide 20 — RESERVE 03 · Hardware disclosure
+
+**On slide:**
+- **No hardware was used. Declared, not discovered.** The contract default is
+  `source="simulator"`, so no telemetry frame can claim otherwise.
+- Telemetry is an **engine-loom emulation** in `apps/bridge/lib/telemetry.ts`, driven
+  by the same baseline constants the Python detector scores against.
+- **What a real retrofit needs, in install order:**
+
+| Sensor | Feeds | Why it matters |
+|---|---|---|
+| Fuel-flow meter | Calibrates the hybrid model | **The load-bearing one** — turns a mis-specified physics coefficient into a measurable one |
+| Engine loom taps — RPM, EGT, coolant, oil pressure, battery | `/maintenance`, `/safety` | The five streams the detector scores |
+| GNSS | `/route`, voyage log | Position and speed over ground |
+| IMU (~1 Hz) | Duty cycle, sea state | ~1 Hz is the honest ceiling — see the bias slide |
+
+**Speaker notes:** Say "no hardware" first, without hedging — the brief requires the
+declaration in the deck. Then pivot: we know exactly what to buy and in what order,
+and the fuel-flow meter is first because it closes the loop on the model.
+
+---
+
+## Slide 21 — RESERVE 04 · Bias & responsible AI
+
+**On slide:**
+
+| # | Bias identified | Mitigation shipped |
+|---|---|---|
+| 1 | **Prime-mover bias** — UCI CBM is a *gas turbine*, not a diesel | Only the dimensionless **wear penalty** transfers. Healthy burn comes from published diesel BSFC. A regression test pins the diesel curve inside published part-load bands so it can never drift back |
+| 2 | **Sampling bias** — wind, current, wave and load do **not vary at all** in UCI CBM | The model does not claim to have learned them. Physics carries conditions→power; ML carries wear→fuel |
+| 3 | **Reference-vessel bias** — a fleet-average baseline flags a healthy odd vessel | The detector fits **each vessel's own** baseline. Measured: a healthy 24 V loom against a 12 V reference scored **1.000 anomalous, battery z = +75**; with its own baseline, **0.032 and clear** — while a +9 °C coolant drift still fires at 1.000 |
+| 4 | **Sensor-capability bias** — FEMTO is 25.6 kHz, our IMU ~1 Hz | Dataset **dropped**. Using it would imply a diagnostic the sensor physically cannot deliver |
+| 5 | **Self-serving baseline** — a counterfactual we pick flatters us | Emissions baseline is `own_prior_route`, the median fuel/nm of ≥3 prior runs. The first three crossings honestly report **"no baseline"** |
+
+- **Language:** advisories are English and Filipino, guarded — numbers preserved
+  exactly, no imperative mood.
+
+**Speaker notes:** The strongest slide in the reserve deck. Bias 3 is the one to demo
+if there is time — a measured before/after, not a claim. The "no baseline" rows are
+the point, not a gap.
+
+---
+
+## Slide 22 — RESERVE 05 · Extended architecture
+
+**On slide:**
+- **Three deterministic modules decide · one LLM phrases · the captain commands.**
+- Eight endpoints on one FastAPI service: `/advise` `/route` `/maintenance` `/safety`
+  `/voyages` `/emissions/report(.csv)` `/health`.
+- **Cadence, measured:** `/advise` 1 s · `/maintenance` 4 s · `/route` event-driven
+  with a 30 s floor. Route is planned at the dock; throttle is per-second.
+- **Two boundaries enforced by tests, not prose:**
+  - `test_safety_never_imports_a_model` greps the safety module for `services.speed`,
+    `services.maintenance`, `onnxruntime`, `numpy`. Safety stays rule-based.
+  - `test_duty_never_moves_the_anomaly_score` — working an engine hard is exposure,
+    not a fault. Otherwise every busy crossing lights the strip and crews learn to
+    ignore it.
+- **Degrades rather than fails:** missing artefact → analytic default; Postgres down →
+  SQLite; Claude unreachable → deterministic template. **A missing model never
+  produces a missing answer.**
+- **334 tests passing.** Serving image is `fastapi, pydantic, numpy, onnxruntime` —
+  no `xgboost`, `scikit-learn`, `scipy`, `pandas` or `torch`.
+
+**Speaker notes:** If they ask one architecture question it will be "where does the LLM
+sit?" — that is the first line. The two boundary tests are the credibility moment: we
+did not describe the boundary, we made it fail the build.
+
+---
+
+## Slide 23 — RESERVE 06 · Model validation, with the numbers
+
+**On slide:**
+- **Wear→fuel bridge:** EGT-excess-over-baseline as the wear signal, **r = 0.97–0.997
+  at fixed load** (mean 0.986 across seven load points). Say *"at fixed load"* out
+  loud — pooled across loads r is **0.86**, because load moves both variables. That is
+  exactly why `load_fraction` is the model's second feature rather than a nuisance to
+  be averaged away.
+- **ONNX export is gated:** `train.py` refuses to write a model drifting >1e-4 from
+  the trained booster. Observed **1.5e-6**. Serving stack **358 MB → 85 MB**.
+- **Route agrees with Speed to 1e-6** —
+  `test_one_leg_route_agrees_with_the_throttle_optimizer`. One shared fuel model; the
+  test fails if the two modules ever diverge.
+- **The load-bearing demo beat:** open the throttle and coolant *and* EGT rise together
+  → the panel stays **nominal, 0.09**. That correlation is what the PCA half learned.
+  Inject a coolant creep alone → **0.99**, naming the coolant stream. **A threshold
+  detector alarms on the first one.**
+- **In flat weather `/route` honestly returns the direct track with zero saving.**
+  Correct, not a bug — place a weather cell first.
+
+**Speaker notes:** If a judge doubts the ML is real, this is the slide. The 0.86 pooled
+figure is deliberately on it — volunteering the weaker number is what makes the
+stronger one believable.
+
+---
+
+## Slide 24 — RESERVE 07 · Feasibility: the three practical questions
+
+**On slide:**
+
+| Question | Our answer |
+|---|---|
+| **How easy is it to start?** | **No new hardware to evaluate it.** The console runs on simulated telemetry, so an operator sees their own route, vessel and fuel numbers before buying a single sensor. Retrofit is incremental — the fuel-flow meter alone unlocks the fuel claim |
+| **How do you survive 18 months?** | **Months 1–6:** R&D grant — finish Phase 2 RUL and the MQTT edge path, no sales pressure. **Months 6–12:** one paid pilot with a named operator through a high-risk season. **Month 12+:** annual subscription, priced per vessel |
+| **How does it grow without breaking?** | **Each new vessel costs one baseline fit, not a retrained fleet model** — the detector learns that vessel's own normal. Stateless HTTP, so scaling is replicas. ONNX is small enough to run on-device, which matters because the Iloilo Strait has no reliable connectivity |
+
+- **Tie it to a real loss:** one breakdown mid-strait strands a full passenger load and
+  costs a day's revenue. One un-forecast squall costs a crossing.
+- **We are not claiming millions in Year 1.** One pilot operator, measured.
+
+**Speaker notes:** The organisers asked these three literally. Lead with "no new
+hardware to evaluate it" — the lowest-friction sentence we own. The per-vessel baseline
+is the technical fact that makes the scaling answer credible rather than aspirational.
+
+---
+
+## Slide 25 — RESERVE 08 · What is NOT built
+
+**On slide:**
+- We keep `docs/DEVIATIONS.md`: **12 deliberate departures** from our submitted
+  profile, each with reasoning — plus a **"Still outstanding"** table of what is simply
+  not built.
+
+| # | Profile says | Status |
+|---|---|---|
+| C | MPC loop re-solves the route continuously | **Not built** — brute-force sweep, re-planned on event |
+| F | MQTT telemetry transport | **Not built** — HTTP/JSON |
+| G | Phase 1 pretrained on NASA C-MAPSS | **Not built** — fits a per-vessel baseline instead |
+| H | *Cumulative* run-hours per load band | **Partly** — window-only. The rate survives honestly; lifetime hours do not |
+
+- **Phase 2 RUL is absent, and that is compliant** — our own profile (p.10) says demo
+  Phase 1 and show Phase 2 as roadmap.
+- **The honest engineering gap:** `apps/bridge` has no TypeScript test runner. 334 tests
+  cover the Python; nothing in the display is unit-tested. Every UI defect this project
+  found needed a human or a browser to see.
+
+**Speaker notes:** Bring this out *before* they find it. A judge who discovers an
+unbuilt claim scores it as an overclaim; a team that tabled it first is scored as
+rigorous. If asked "what would you fix with one more week?" — the TS test runner, and
+the fuel-flow calibration path.
 
 ---
 
