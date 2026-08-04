@@ -165,6 +165,17 @@ import "driver.js/dist/driver.css";
                 lastCallMs: 0,
                 inFlight: false,
             },
+            // Predictive Maintenance System. `selected` is which of the four
+            // systems the operator has clicked on the vessel diagram;
+            // `historyImported` stops the console sending its own thin baseline
+            // once the API holds a fitted model from a real historical dataset.
+            pdm: {
+                report: null,
+                selected: 'engine',
+                historyImported: false,
+                lastCallMs: 0,
+                inFlight: false,
+            },
             aiStrategy: ""
         };
 
@@ -3006,6 +3017,238 @@ function noteMaintenanceDetection() {
 }
 
 /** Paint the API's verdict. The console forms no opinion of its own here. */
+/* ==========================================================================
+ * Predictive Maintenance System (ISO 13374 presentation layer)
+ *
+ * The panel shows one system at a time. Everything it displays comes from
+ * /api/maintenance/pdm -- the console computes no health of its own here, for
+ * the same reason it computes no fuel of its own: a second implementation is a
+ * second model the moment either is edited, and the one the judges see would
+ * drift from the one the tests cover.
+ * ======================================================================== */
+
+/** How often the assessment is re-run. Component life moves in wear-hours and a
+ *  residual needs a window to be measurable, so polling faster re-renders one answer. */
+const PDM_INTERVAL_MS = 15000;
+
+const PDM_STATUS_STYLE = {
+    severe:   { chip: 'bg-red-500/20 text-red-300 border-red-500/40',       bar: 'bg-red-500',     text: 'text-red-300' },
+    degraded: { chip: 'bg-amber-500/20 text-amber-300 border-amber-500/40', bar: 'bg-amber-400',   text: 'text-amber-300' },
+    elevated: { chip: 'bg-sky-500/20 text-sky-300 border-sky-500/40',       bar: 'bg-sky-400',     text: 'text-sky-300' },
+    normal:   { chip: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40', bar: 'bg-emerald-500', text: 'text-emerald-300' },
+};
+
+/** Ask the API for a full assessment of all four systems. */
+function refreshPdmAssessment() {
+    const p = State.pdm;
+    const m = State.maintenance;
+    if (p.inFlight) return;
+    // A residual is a window statistic; below the window size there is nothing
+    // to measure and asking would only return raw readings dressed as analysis.
+    if (m.frames.length < 20) return;
+
+    const now = Date.now();
+    if (now - p.lastCallMs < PDM_INTERVAL_MS) return;
+    p.lastCallMs = now;
+    p.inFlight = true;
+
+    const runHours = State.ship.runHours || 0;
+    const wearHours = State.ship.wearHours || 0;
+    const { hoursPerDay } = loadOperatorHistory();
+    const specs = State.extractedEngineSpecs || {};
+
+    fetch('/api/maintenance/pdm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            frames: m.frames.slice(),
+            // Only sent until a historical dataset is imported. That fit spans far
+            // more weather than one session's baseline ever will, so once the API
+            // holds one, sending this would replace a better model with a worse.
+            baselineFrames: p.historyImported ? null : m.baseline,
+            ratedRpm: Number(specs.ratedRpm) || 2800,
+            runHours,
+            wearHours,
+            severityIndex: runHours > 0 && wearHours > 0 ? wearHours / runHours : null,
+            hoursPerDay: hoursPerDay > 0 ? hoursPerDay : null,
+            baselineConfidence: Number(m.status?.baselineConfidence) || 0,
+        }),
+    })
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+        .then(data => { p.report = data; renderPdmPanel(); })
+        // Offline keeps the last assessment on screen. A design life does not stop
+        // being true because the link dropped.
+        .catch(() => {})
+        .finally(() => { p.inFlight = false; });
+}
+
+/** Paint the vessel diagram, the component table, and the three analysis columns. */
+function renderPdmPanel() {
+    const report = State.pdm.report;
+    const selected = State.pdm.selected;
+
+    // --- vessel diagram: every block tinted by its own status ---------------
+    document.querySelectorAll('.pdm-system').forEach(btn => {
+        const key = btn.dataset.pdmSystem;
+        const sys = report?.systems?.find(s => s.system === key);
+        const style = PDM_STATUS_STYLE[sys?.status] || PDM_STATUS_STYLE.normal;
+        const isSel = key === selected;
+        // Geometry comes from data-pos, never from the string being built here.
+        // Writing className wholesale is how the previous hull kept dragging its
+        // blocks back to the middle every time a status changed colour.
+        btn.className =
+            `pdm-system absolute ${btn.dataset.pos || ''} rounded-md border flex flex-col items-center justify-center transition-all cursor-pointer ` +
+            `${style.chip} ${isSel ? 'ring-2 ring-orange-400 z-10' : 'opacity-75 hover:opacity-100'}`;
+        const bar = btn.querySelector('[data-pdm-life]');
+        if (bar) {
+            bar.className = `h-full ${style.bar} transition-all duration-700`;
+            bar.style.width = `${Math.max(0, Math.min(100, (sys?.lifeScore ?? 1) * 100))}%`;
+        }
+    });
+
+    const overall = document.getElementById('pdmOverallBadge');
+    if (overall) {
+        if (!report) {
+            overall.textContent = 'Awaiting data';
+            overall.className = 'text-[0.62rem] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 tracking-wider uppercase';
+        } else {
+            const st = PDM_STATUS_STYLE[report.overallStatus] || PDM_STATUS_STYLE.normal;
+            overall.textContent = `${report.overallStatus} · ${report.dataQuality} data`;
+            overall.className = `text-[0.62rem] font-mono px-1.5 py-0.5 rounded border tracking-wider uppercase ${st.chip}`;
+        }
+    }
+
+    const sys = report?.systems?.find(s => s.system === selected);
+
+    const title = document.getElementById('pdmSystemTitle');
+    const statusEl = document.getElementById('pdmSystemStatus');
+    if (title) title.textContent = sys ? sys.label : selected;
+    if (statusEl) {
+        const st = PDM_STATUS_STYLE[sys?.status] || PDM_STATUS_STYLE.normal;
+        statusEl.textContent = sys ? sys.status : '--';
+        statusEl.className = `text-[0.62rem] font-mono px-1.5 py-0.5 rounded border tracking-wider uppercase ${st.chip}`;
+    }
+
+    // --- component | life score | time to failure ---------------------------
+    const rows = document.getElementById('pdmComponentRows');
+    if (rows) {
+        if (!sys) {
+            rows.innerHTML = '<div class="py-2 text-xs text-slate-500">Assessment resolves once the engine has run-hours.</div>';
+        } else {
+            rows.innerHTML = sys.components.map(c => {
+                const st = PDM_STATUS_STYLE[c.status] || PDM_STATUS_STYLE.normal;
+                const pct = Math.max(0, Math.min(100, (c.lifeScore || 0) * 100));
+                // A prognosis is shown with its tolerance or not at all. A bare
+                // number of weeks invites planning against a precision the data
+                // cannot support, which is why the contract refuses one.
+                const ttf = (c.weeksToFailure != null && c.weeksTolerance != null)
+                    ? `${c.weeksToFailure.toFixed(0)} ± ${c.weeksTolerance.toFixed(0)} wk`
+                    : '<span class="text-slate-600">not projectable</span>';
+                const why = (c.contributingChannels || []).length
+                    ? `<div class="text-[0.55rem] text-amber-400/80 truncate">${c.contributingChannels.join(', ')}</div>`
+                    : '';
+                const ageing = c.conditionFactor > 1.05
+                    ? `<span class="text-[0.55rem] text-amber-400">${c.conditionFactor.toFixed(2)}× ageing</span>` : '';
+                return `
+                    <div class="grid grid-cols-[1fr_5.5rem_7rem] gap-x-3 items-center py-1.5">
+                        <div class="min-w-0">
+                            <div class="text-xs text-slate-200 truncate">${c.label}</div>
+                            ${why}
+                        </div>
+                        <div class="text-right">
+                            <div class="hud-font text-xs ${st.text}">${pct.toFixed(0)}%</div>
+                            <div class="h-1 mt-0.5 bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full ${st.bar}" style="width:${pct}%"></div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="hud-font text-xs ${st.text}">${ttf}</div>
+                            ${ageing}
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+    }
+
+    // --- AI analysis | anomalies | recommended action -----------------------
+    const setText = (id, value) => { const e = document.getElementById(id); if (e) e.textContent = value; };
+    setText('pdmAnalysis', sys ? sys.analysisEn : '--');
+    setText('pdmAnalysisFil', sys ? sys.analysisFil : '');
+    setText('pdmAction', sys ? sys.recommendedActionEn : '--');
+    setText('pdmActionFil', sys ? sys.recommendedActionFil : '');
+
+    const prov = document.getElementById('pdmProvenance');
+    if (prov && report) {
+        prov.textContent =
+            `${report.conformsTo} · condition models fitted on ${report.historyRows} windows · `
+            + `baseline confidence ${Math.round((report.baselineConfidence || 0) * 100)}%`;
+    }
+
+    const anomEl = document.getElementById('pdmAnomalies');
+    if (anomEl) {
+        const list = sys?.anomalies || [];
+        anomEl.innerHTML = list.length
+            ? list.map(a => {
+                const t = new Date(a.observedAt);
+                const stamp = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')} `
+                    + `${String(t.getDate()).padStart(2,'0')}/${String(t.getMonth()+1).padStart(2,'0')}/${t.getFullYear()}`;
+                const st = PDM_STATUS_STYLE[a.status] || PDM_STATUS_STYLE.normal;
+                return `<div class="py-1 border-b border-slate-800/60 last:border-0">
+                            <div class="flex justify-between gap-2">
+                                <span class="hud-font text-[0.58rem] text-slate-500">${stamp}</span>
+                                <span class="hud-font text-[0.58rem] ${st.text}">${a.residualSigma >= 0 ? '+' : ''}${a.residualSigma.toFixed(1)}σ</span>
+                            </div>
+                            <div class="text-xs text-slate-300">${a.label}</div>
+                            <div class="text-[0.58rem] text-slate-500 leading-snug">${a.note}</div>
+                        </div>`;
+              }).join('')
+            : '<div class="text-xs text-slate-500">None recorded for this system.</div>';
+    }
+}
+
+/** Upload a historical dataset and refit this vessel's condition models on it. */
+function uploadPdmHistory(file) {
+    const statusEl = document.getElementById('pdmHistoryStatus');
+    if (!file) return;
+    if (statusEl) statusEl.textContent = `Reading ${file.name}…`;
+
+    const reader = new FileReader();
+    reader.onerror = () => { if (statusEl) statusEl.textContent = 'Could not read the file.'; };
+    reader.onload = () => {
+        const specs = State.extractedEngineSpecs || {};
+        fetch('/api/maintenance/history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ csvText: String(reader.result || ''), ratedRpm: Number(specs.ratedRpm) || 2800 }),
+        })
+            .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+            .then(d => {
+                State.pdm.historyImported = (d.modelsRefitted || []).length > 0;
+                if (statusEl) {
+                    const cov = d.conditionsCovered || {};
+                    const wave = cov.wave_height_range_m;
+                    // Coverage is reported, not implied. A dataset recorded entirely
+                    // in calm water cannot teach the models what rough weather looks
+                    // like, however many rows it has.
+                    const coverage = wave != null
+                        ? ` Wave range covered: ${wave.toFixed(1)} m.${wave < 0.5 ? ' Narrow — the models will still be guessing about rough weather.' : ''}`
+                        : '';
+                    const unknown = (d.channelsUnrecognised || []).length
+                        ? ` Unrecognised columns: ${d.channelsUnrecognised.join(', ')}.` : '';
+                    statusEl.textContent = `${d.messageEn}${coverage}${unknown}`;
+                }
+                log(`Historical dataset imported: ${d.rowsAccepted} rows, `
+                    + `${(d.modelsRefitted || []).length} condition models refitted.`, 'ai');
+                // Re-assess immediately against the better models rather than
+                // waiting out the poll interval.
+                State.pdm.lastCallMs = 0;
+                refreshPdmAssessment();
+            })
+            .catch(() => { if (statusEl) statusEl.textContent = 'Import failed — the API did not accept the file.'; });
+    };
+    reader.readAsText(file);
+}
+
 /** Most anomaly events kept. A strip an operator scans, not a database. */
 const ANOMALY_EVENT_LIMIT = 12;
 
@@ -5480,6 +5723,9 @@ function refreshAnalyticsSidebar() {
                 // wear-hours, so re-resolving it every tick would re-render one answer.
                 refreshComponentLife();
                 renderComponentLife();
+
+                // The full ISO 13374 assessment, on its own slower cadence again.
+                refreshPdmAssessment();
             } else {
                 // Standby / Off display state when voyage has not started or has completed
                 updateDisplayValue('valFlow', '--');
@@ -6506,6 +6752,25 @@ function refreshAnalyticsSidebar() {
             renderMaturityReadout();
             renderComponentLife();
             renderAnomalyLog();
+
+            // Vessel diagram: selecting a system swaps the table and the three
+            // analysis columns below it. Rendering immediately rather than waiting
+            // for the next poll, because a click that does nothing for fifteen
+            // seconds reads as a broken button.
+            document.querySelectorAll('.pdm-system').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    State.pdm.selected = btn.dataset.pdmSystem;
+                    renderPdmPanel();
+                });
+            });
+
+            const historyInput = document.getElementById('inPdmHistory');
+            historyInput?.addEventListener('change', (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (file) uploadPdmHistory(file);
+            });
+
+            renderPdmPanel();
 
             // Operating instructions. The driver.js tour walks the interface;
             // this is the version you can read at your own pace and scroll back in.

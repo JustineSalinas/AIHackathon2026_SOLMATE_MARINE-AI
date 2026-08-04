@@ -222,6 +222,61 @@ class ComponentLifeRequest(BaseModel):
     )
 
 
+class PdmRequest(BaseModel):
+    """A window of telemetry plus the vessel's accumulated exposure.
+
+    Carries both because the two halves answer different questions. The frames say
+    what the engine is doing now, against conditions; the exposure says how much
+    life it has already spent. A health assessment needs both -- a nearly-new part
+    behaving oddly and a worn part behaving perfectly are different situations and
+    neither is visible from one half alone.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vessel_id: str = "MV-DEMO-01"
+    frames: list[TelemetryFrame] = Field(
+        min_length=1, description="Recent frames, oldest first. A window of 20 or more "
+        "lets vibration be measured at all -- it is a fluctuation, not an instant."
+    )
+    baseline_frames: list[TelemetryFrame] | None = Field(
+        None,
+        description="Frames the caller asserts are HEALTHY. Used to fit this vessel's "
+        "condition models when no historical dataset has been imported. Omit once a "
+        "dataset has been uploaded -- that fit spans far more weather.",
+    )
+    rated_rpm: float = Field(2800.0, gt=0)
+    run_hours: float = Field(0.0, ge=0)
+    wear_hours: float = Field(
+        0.0, ge=0, description="Run-hours weighted by load, per services/maintenance/duty.py."
+    )
+    severity_index: float | None = Field(None, gt=0)
+    hours_per_day: float | None = Field(
+        None, gt=0, description="Operator's working pattern. Without it a prognosis "
+        "cannot be stated in weeks and is omitted rather than assumed.",
+    )
+    baseline_confidence: float = Field(0.0, ge=0, le=1)
+    renewals: dict[str, float] | None = Field(
+        None, description="Wear-hour reading when each component was last renewed."
+    )
+
+
+class HistoryUploadRequest(BaseModel):
+    """A historical dataset, as CSV text.
+
+    Column headers are matched against ISO 19848 DataChannelIDs first, then plain
+    channel names and common export aliases. Sent as text rather than multipart
+    because the payload is a CSV a console already holds in memory, and a file
+    part would buy nothing but a boundary parser.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vessel_id: str = "MV-DEMO-01"
+    csv_text: str = Field(min_length=1)
+    rated_rpm: float = Field(2800.0, gt=0)
+
+
 class SafetyRequest(BaseModel):
     """A single frame to check against the rule set.
 

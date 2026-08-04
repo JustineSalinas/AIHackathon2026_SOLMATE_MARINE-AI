@@ -31,7 +31,9 @@ from apps.api.schemas import (
     CurvePoint,
     EmissionsOut,
     ComponentLifeRequest,
+    HistoryUploadRequest,
     MaintenanceRequest,
+    PdmRequest,
     PowerOut,
     RouteRequest,
     RouteResponse,
@@ -40,6 +42,7 @@ from apps.api.schemas import (
 )
 from packages.contracts.emissions import EmissionsReport, VoyageRecord
 from packages.contracts.maintenance import ComponentLifeReport, MaintenanceStatus
+from packages.contracts.pdm import HistoryImportSummary, PdmReport
 from packages.contracts.route import RouteRecommendation
 from packages.contracts.safety import SafetyState
 from packages.contracts.speed import SpeedRecommendation
@@ -50,7 +53,10 @@ from services.emissions import co2_kg
 from services.emissions.report import build_report, to_csv
 from services.maintenance.baseline import fit_from_frames, synthetic_healthy_baseline
 from services.maintenance.detector import detect
+from services.maintenance.assess import assess as assess_pdm
+from services.maintenance.history import parse_history_csv, refit_from_history
 from services.maintenance.lifespan import resolve_component_life
+from services.maintenance.normalize import ConditionModelSet, fit_condition_models
 from services.route.forecast import load_forecast
 from services.route.geo import LatLon
 from services.route.planner import as_route_recommendation, plan_route
@@ -435,6 +441,56 @@ async def maintenance_component_life(req: ComponentLifeRequest) -> ComponentLife
         hours_per_day=req.hours_per_day,
         wear_hours_at_last_renewal=req.wear_hours_at_last_renewal,
     )
+
+
+@app.post("/maintenance/pdm", response_model=PdmReport)
+async def maintenance_pdm(req: PdmRequest) -> PdmReport:
+    """Full ISO 13374 assessment: four systems, their components, and what to do.
+
+    The chain is DA -> DM -> SD -> HA -> PA -> AG, and the blocks stay separate on
+    the way out: a residual, a state, a life score, a prognosis and an advisory are
+    five different claims of five different strengths, and collapsing them into one
+    number is how a condition-monitoring system starts lying.
+
+    Condition models come from an imported historical dataset when one has been
+    uploaded, because it spans far more weather than a single voyage. Failing that
+    they are fitted from the caller's asserted-healthy frames, and failing that the
+    report degrades to raw readings and says so through `data_quality`.
+    """
+    models: ConditionModelSet | None = _state.get(f"condition_models:{req.vessel_id}")
+    if models is None or not models.models:
+        if req.baseline_frames:
+            models = fit_condition_models(req.baseline_frames, rated_rpm=req.rated_rpm)
+        else:
+            models = ConditionModelSet()
+
+    return assess_pdm(
+        req.frames, models,
+        vessel_id=req.vessel_id,
+        rated_rpm=req.rated_rpm,
+        wear_hours=req.wear_hours,
+        run_hours=req.run_hours,
+        severity_index=req.severity_index,
+        hours_per_day=req.hours_per_day,
+        baseline_confidence=req.baseline_confidence,
+        renewals=req.renewals,
+    )
+
+
+@app.post("/maintenance/history", response_model=HistoryImportSummary)
+async def maintenance_history(req: HistoryUploadRequest) -> HistoryImportSummary:
+    """Import a historical dataset and refit this vessel's condition models on it.
+
+    The models are held in process memory, which on a serverless deployment means
+    they live for as long as the instance does -- the same caveat the voyage store
+    carries, and stated for the same reason. A production fleet would persist them
+    per vessel; a console session does not need to.
+    """
+    frames, summary = parse_history_csv(req.csv_text, vessel_id=req.vessel_id)
+    models, summary = refit_from_history(frames, rated_rpm=req.rated_rpm, summary=summary)
+    if models.models:
+        _state[f"condition_models:{req.vessel_id}"] = models
+    return summary
 
 
 @app.post("/voyages", response_model=VoyageRecord, status_code=201)

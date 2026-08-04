@@ -405,6 +405,11 @@ function engineReference(engineTypeStr: string, mcrHpVal: number) {
 export function createApp(): express.Express {
   const app = express();
 
+  // Historical dataset uploads are megabytes of CSV and must be parsed before
+  // the global body limit gets to reject them. A per-route parser registered
+  // AFTER app.use(express.json()) never runs: the global one has already read
+  // the stream and returned 413. Order is the whole fix.
+  app.use("/api/maintenance/history", express.json({ limit: "32mb" }));
   app.use(express.json());
 
   /** OpenStreetMap raster proxy. Kept: caching them here is politer than
@@ -687,6 +692,144 @@ export function createApp(): express.Express {
     } catch (e) {
       apiFailure(res, "/maintenance/component-life", e);
     }
+  });
+
+  /**
+   * Predictive maintenance: the full ISO 13374 assessment for all four systems.
+   *
+   * Passed through almost whole. The panel needs the residuals to explain itself
+   * -- "vibration is high, and here is what the sea state predicted" is the
+   * feature -- so trimming the response to headline numbers would leave the
+   * display unable to say why it reached its verdict.
+   */
+  app.post("/api/maintenance/pdm", async (req, res) => {
+    const {
+      frames = [], baselineFrames = null, ratedRpm = 2800,
+      runHours = 0, wearHours = 0, severityIndex = null,
+      hoursPerDay = null, baselineConfidence = 0, renewals = null,
+    } = req.body || {};
+
+    if (!Array.isArray(frames) || frames.length === 0) {
+      res.status(400).json({ error: "frames required" });
+      return;
+    }
+
+    try {
+      const upstream = await fetch(`${API_URL}/maintenance/pdm`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          vessel_id: "MV-CONSOLE-01",
+          frames,
+          baseline_frames:
+            Array.isArray(baselineFrames) && baselineFrames.length ? baselineFrames : null,
+          rated_rpm: numberOrNull(ratedRpm) ?? 2800,
+          run_hours: numberOrNull(runHours) ?? 0,
+          wear_hours: numberOrNull(wearHours) ?? 0,
+          severity_index: numberOrNull(severityIndex),
+          hours_per_day: numberOrNull(hoursPerDay),
+          baseline_confidence: numberOrNull(baselineConfidence) ?? 0,
+          renewals: renewals ?? null,
+        }),
+      });
+      if (!upstream.ok) throw new Error(`upstream ${upstream.status}`);
+      const data = (await upstream.json()) as Record<string, unknown>;
+      const systems = (data.systems as Record<string, unknown>[]) ?? [];
+      res.json({
+        overallStatus: data.overall_status,
+        dataQuality: data.data_quality,
+        baselineConfidence: data.baseline_confidence,
+        historyRows: data.history_rows,
+        wearHours: data.wear_hours,
+        runHours: data.run_hours,
+        conformsTo: data.conforms_to,
+        systems: systems.map((s) => ({
+          system: s.system,
+          label: s.label_en,
+          labelFil: s.label_fil,
+          status: s.status,
+          lifeScore: s.life_score,
+          analysisEn: s.analysis_en,
+          analysisFil: s.analysis_fil,
+          recommendedActionEn: s.recommended_action_en,
+          recommendedActionFil: s.recommended_action_fil,
+          components: ((s.components as Record<string, unknown>[]) ?? []).map((c) => ({
+            id: c.component_id,
+            label: c.label_en,
+            labelFil: c.label_fil,
+            criticality: c.criticality,
+            lifeScore: c.life_score,
+            weeksToFailure: c.weeks_to_failure,
+            weeksTolerance: c.weeks_tolerance,
+            status: c.status,
+            conditionFactor: c.condition_factor,
+            contributingChannels: c.contributing_channels,
+          })),
+          residuals: ((s.residuals as Record<string, unknown>[]) ?? []).map((r) => ({
+            channel: r.channel,
+            localId: r.local_id,
+            label: r.label_en,
+            measured: r.measured,
+            expected: r.expected,
+            residualSigma: r.residual_sigma,
+            conditionExplained: r.condition_explained,
+          })),
+          anomalies: ((s.anomalies as Record<string, unknown>[]) ?? []).map((a) => ({
+            observedAt: a.observed_at,
+            label: a.label_en,
+            residualSigma: a.residual_sigma,
+            status: a.status,
+            runHours: a.run_hours,
+            note: a.note_en,
+          })),
+        })),
+      });
+    } catch (e) {
+      apiFailure(res, "/maintenance/pdm", e);
+    }
+  });
+
+  /**
+   * Historical dataset upload. CSV text in, an honest summary of what it bought out.
+   *
+   * The body limit is raised for this route alone: a season of logs is megabytes
+   * of CSV, and the default JSON limit would reject it with a 413 that says
+   * nothing useful to an operator holding a perfectly good file.
+   */
+  app.post("/api/maintenance/history", async (req, res) => {
+      const { csvText = null, ratedRpm = 2800 } = req.body || {};
+      if (typeof csvText !== "string" || !csvText.trim()) {
+        res.status(400).json({ error: "csvText required" });
+        return;
+      }
+
+      try {
+        const upstream = await fetch(`${API_URL}/maintenance/history`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            vessel_id: "MV-CONSOLE-01",
+            csv_text: csvText,
+            rated_rpm: numberOrNull(ratedRpm) ?? 2800,
+          }),
+        });
+        if (!upstream.ok) throw new Error(`upstream ${upstream.status}`);
+        const d = (await upstream.json()) as Record<string, unknown>;
+        res.json({
+          rowsReceived: d.rows_received,
+          rowsAccepted: d.rows_accepted,
+          rowsRejected: d.rows_rejected,
+          channelsMapped: d.channels_mapped,
+          channelsUnrecognised: d.channels_unrecognised,
+          spanHours: d.span_hours,
+          conditionsCovered: d.conditions_covered,
+          modelsRefitted: d.models_refitted,
+          messageEn: d.message_en,
+          messageFil: d.message_fil,
+        });
+      } catch (e) {
+        apiFailure(res, "/maintenance/history", e);
+      }
   });
 
   /**
