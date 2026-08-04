@@ -5659,6 +5659,9 @@ function refreshAnalyticsSidebar() {
                     };
                     
                     State.mlLogger.data.push(record);
+                    if (State.mlLogger.data.length > 10000) {
+                        State.mlLogger.data.shift();
+                    }
 
                     const badge = document.getElementById('badgeLoggerStatus');
                     const txtCount = document.getElementById('txtRecordCount');
@@ -7740,49 +7743,63 @@ function refreshAnalyticsSidebar() {
             }
 
             window.updateAnalyticsChartWithData = function(data) {
-                if (!data) return;
+                if (!data || data.length === 0) return;
                 
-                const labels = data.map(d => {
+                // Downsample large datasets to at most 500 points for Chart.js rendering to prevent V8 memory crash
+                let renderData = data;
+                const MAX_POINTS = 500;
+                if (data.length > MAX_POINTS) {
+                    const step = Math.ceil(data.length / MAX_POINTS);
+                    renderData = [];
+                    for (let i = 0; i < data.length; i += step) {
+                        renderData.push(data[i]);
+                    }
+                    if (renderData[renderData.length - 1] !== data[data.length - 1]) {
+                        renderData.push(data[data.length - 1]);
+                    }
+                }
+                
+                const labels = renderData.map(d => {
                     const date = new Date(d.timestamp);
                     return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
                 });
                 
                 if (chartPerformance) {
                     chartPerformance.data.labels = labels;
-                    chartPerformance.data.datasets[0].data = data.map(d => parseFloat(d.speedKts));
-                    chartPerformance.data.datasets[1].data = data.map(d => parseFloat(d.rpm));
-                    chartPerformance.data.datasets[2].data = data.map(d => parseFloat(d.fuelFlow || 0));
+                    chartPerformance.data.datasets[0].data = renderData.map(d => parseFloat(d.speedKts));
+                    chartPerformance.data.datasets[1].data = renderData.map(d => parseFloat(d.rpm));
+                    chartPerformance.data.datasets[2].data = renderData.map(d => parseFloat(d.fuelFlow || 0));
                     chartPerformance.update('none');
                 }
                 
                 if (chartHealth) {
                     chartHealth.data.labels = labels;
-                    chartHealth.data.datasets[0].data = data.map(d => parseFloat(d.engineLoad) * 100);
-                    chartHealth.data.datasets[1].data = data.map(d => parseFloat(d.egt));
-                    chartHealth.data.datasets[2].data = data.map(d => parseFloat(d.cooling));
-                    chartHealth.data.datasets[3].data = data.map(d => parseFloat(d.hullStress || 0));
+                    chartHealth.data.datasets[0].data = renderData.map(d => parseFloat(d.engineLoad) * 100);
+                    chartHealth.data.datasets[1].data = renderData.map(d => parseFloat(d.egt));
+                    chartHealth.data.datasets[2].data = renderData.map(d => parseFloat(d.cooling));
+                    chartHealth.data.datasets[3].data = renderData.map(d => parseFloat(d.hullStress || 0));
                     chartHealth.update('none');
                 }
                 
                 if (chartEnvironment) {
                     chartEnvironment.data.labels = labels;
-                    chartEnvironment.data.datasets[0].data = data.map(d => parseFloat(d.windSpd));
-                    chartEnvironment.data.datasets[1].data = data.map(d => parseFloat(d.waveHt));
-                    chartEnvironment.data.datasets[2].data = data.map(d => parseFloat(d.currentSpd));
+                    chartEnvironment.data.datasets[0].data = renderData.map(d => parseFloat(d.windSpd));
+                    chartEnvironment.data.datasets[1].data = renderData.map(d => parseFloat(d.waveHt));
+                    chartEnvironment.data.datasets[2].data = renderData.map(d => parseFloat(d.currentSpd));
                     chartEnvironment.update('none');
                 }
                 
                 if (chartMaster) {
                     chartMaster.data.labels = labels;
-                    chartMaster.data.datasets[0].data = data.map(d => Math.min(100, (parseFloat(d.speedKts) / 30) * 100)); // SOG (max 30kt)
-                    chartMaster.data.datasets[1].data = data.map(d => Math.min(100, (parseFloat(d.rpm) / 1000) * 100)); // RPM (max 1000)
-                    chartMaster.data.datasets[2].data = data.map(d => Math.min(100, (parseFloat(d.fuelFlow || 0) / 200) * 100)); // Fuel (max 200 L/h)
-                    chartMaster.data.datasets[3].data = data.map(d => parseFloat(d.engineLoad) * 100); // Load %
-                    chartMaster.data.datasets[4].data = data.map(d => Math.min(100, (parseFloat(d.egt) / 800) * 100)); // EGT (max 800)
-                    chartMaster.data.datasets[5].data = data.map(d => parseFloat(d.hullStress || 0)); // Stress %
-                    chartMaster.data.datasets[6].data = data.map(d => Math.min(100, (parseFloat(d.windSpd) / 50) * 100)); // Wind (max 50kt)
-                    chartMaster.data.datasets[7].data = data.map(d => Math.min(100, (parseFloat(d.currentSpd) / 5) * 100)); // Current (max 5kt)
-                    chartMaster.data.datasets[8].data = data.map(d => Math.min(100, (parseFloat(d.waveHt) / 10) * 100)); // Wave (max 10)
+                    chartMaster.data.datasets[0].data = renderData.map(d => Math.min(100, (parseFloat(d.speedKts) / 30) * 100)); // SOG (max 30kt)
+                    chartMaster.data.datasets[1].data = renderData.map(d => Math.min(100, (parseFloat(d.rpm) / 1000) * 100)); // RPM (max 1000)
+                    chartMaster.data.datasets[2].data = renderData.map(d => Math.min(100, (parseFloat(d.fuelFlow || 0) / 200) * 100)); // Fuel (max 200 L/h)
+                    chartMaster.data.datasets[3].data = renderData.map(d => parseFloat(d.engineLoad) * 100); // Load %
+                    chartMaster.data.datasets[4].data = renderData.map(d => Math.min(100, (parseFloat(d.egt) / 800) * 100)); // EGT (max 800)
+                    chartMaster.data.datasets[5].data = renderData.map(d => parseFloat(d.hullStress || 0)); // Stress %
+                    chartMaster.data.datasets[6].data = renderData.map(d => Math.min(100, (parseFloat(d.windSpd) / 50) * 100)); // Wind (max 50kt)
+                    chartMaster.data.datasets[7].data = renderData.map(d => Math.min(100, (parseFloat(d.currentSpd) / 5) * 100)); // Current (max 5kt)
+                    chartMaster.data.datasets[8].data = renderData.map(d => Math.min(100, (parseFloat(d.waveHt) / 10) * 100)); // Wave (max 10)
                     chartMaster.update('none');
                 }
             };
