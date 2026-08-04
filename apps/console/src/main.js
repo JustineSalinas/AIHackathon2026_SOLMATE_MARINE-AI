@@ -113,6 +113,19 @@ import "driver.js/dist/driver.css";
                 lastSampleTimeMs: 0,
                 intervalMs: 1000
             },
+            // Phase 1 engine health, scored by the API's anomaly detector rather
+            // than by anything in this file. `baseline` is the vessel's own
+            // healthy window: without it the detector scores this boat against a
+            // reference engine, and a 24V loom against a 12V reference reads as
+            // faulty at every throttle setting. `frames` is the rolling window
+            // actually scored.
+            maintenance: {
+                baseline: [],
+                frames: [],
+                status: null,
+                lastCallMs: 0,
+                inFlight: false,
+            },
             aiWaypoints: [],
             aiStrategy: ""
         };
@@ -2689,6 +2702,96 @@ function csvField(value) {
     return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
+/** Frames of steady running collected before the detector is trusted to judge. */
+const MAINTENANCE_BASELINE_FRAMES = 90;
+/** Rolling window actually scored. */
+const MAINTENANCE_WINDOW_FRAMES = 60;
+/** Wall-clock gap between calls. The engine does not change faster than this. */
+const MAINTENANCE_INTERVAL_MS = 15000;
+
+/**
+ * Buffer one telemetry frame, then score the window when there is enough of it.
+ *
+ * The first 90 frames become this vessel's baseline and are never scored against
+ * -- they are the definition of its normal. That is an assumption, and a fair
+ * one only because the simulator starts healthy: on real hardware the operator
+ * would have to assert the window was clean. It is recorded rather than hidden,
+ * because a baseline fitted over a developing fault would teach the detector
+ * that the fault is normal, which is the one failure mode that cannot be seen
+ * from the outside.
+ */
+function collectMaintenanceFrame({ coolantC, oilBar, egtC }) {
+    const m = State.maintenance;
+    if (!Number.isFinite(coolantC) || !Number.isFinite(oilBar) || !Number.isFinite(egtC)) return;
+
+    const frame = {
+        vessel_id: 'MV-CONSOLE-01',
+        ts: new Date().toISOString(),
+        source: 'simulator',
+        electro_mechanical: {
+            coolant_temp_c: Number(coolantC.toFixed(2)),
+            oil_pressure_kpa: Number((oilBar * 100).toFixed(1)),  // bar -> kPa
+            exhaust_gas_temp_c: Number(egtC.toFixed(1)),
+        },
+    };
+
+    if (m.baseline.length < MAINTENANCE_BASELINE_FRAMES) {
+        m.baseline.push(frame);
+        return;
+    }
+    m.frames.push(frame);
+    if (m.frames.length > MAINTENANCE_WINDOW_FRAMES) m.frames.shift();
+
+    const now = Date.now();
+    if (m.inFlight || m.frames.length < MAINTENANCE_WINDOW_FRAMES) return;
+    if (now - m.lastCallMs < MAINTENANCE_INTERVAL_MS) return;
+    m.lastCallMs = now;
+    m.inFlight = true;
+
+    fetch('/api/maintenance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            frames: m.frames.slice(),
+            baselineFrames: m.baseline,
+            observedHours: (State.ship.distanceTraveledNM || 0) / 12,
+        }),
+    })
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+        .then(data => { m.status = data; renderMaintenanceStatus(); })
+        // Offline is a state, not a crash: the strip keeps its last reading and
+        // says nothing new, exactly as the throttle and route panels do.
+        .catch(() => { m.status = null; renderMaintenanceStatus(); })
+        .finally(() => { m.inFlight = false; });
+}
+
+/** Paint the API's verdict. The console forms no opinion of its own here. */
+function renderMaintenanceStatus() {
+    const el = document.getElementById('txtEnginePrediction');
+    const s = State.maintenance.status;
+    if (!el || !s) return;
+
+    const pct = Math.round((Number(s.anomalyScore) || 0) * 100);
+    const top = (s.streams && s.streams[0]) || null;
+    const provenance = s.baselineFitted
+        ? 'Phase 1 detector · baseline fitted to this vessel'
+        : 'Phase 1 detector · reference baseline';
+
+    if (s.isAnomalous && top) {
+        el.innerHTML =
+            `<span class='text-amber-300'>Anomaly ${pct}% — ${top.label} ` +
+            `(${Number(top.zScore) >= 0 ? '+' : ''}${Number(top.zScore).toFixed(1)}σ, ` +
+            `${Math.round(Number(top.contributionPct) || 0)}% of score).</span>` +
+            `<span class='block text-slate-500 text-[0.75rem] mt-0.5'>${provenance}. ` +
+            `Phase 1 names the stream, never the part or a date.</span>`;
+    } else {
+        el.innerHTML =
+            `<span class='text-emerald-300'>No anomaly — engine within its learned normal ` +
+            `(${pct}%).</span>` +
+            `<span class='block text-slate-500 text-[0.75rem] mt-0.5'>${provenance}.</span>`;
+    }
+}
+
 function downloadTripCSV(trip) {
     const dataToDownload = trip && trip.data;
     if (!dataToDownload || dataToDownload.length === 0) return;
@@ -4346,9 +4449,15 @@ function refreshAnalyticsSidebar() {
                 const boxAiAlert = document.getElementById('boxAiAlert');
                 const txtAiAlertMsg = document.getElementById('txtAiAlertMsg');
                 
+                // The local health score still drives the alert box and the log,
+                // but it no longer writes the ENGINE HEALTH line once the API has
+                // spoken. Two different answers to the same question, one of them
+                // a threshold in this file and the other the Phase 1 detector, is
+                // how a demo ends up contradicting its own pitch on screen.
+                const apiOwnsHealthLine = !!State.maintenance.status;
                 if (txtEnginePrediction) {
                     if (health >= 95) {
-                        txtEnginePrediction.innerHTML = "<span class='text-emerald-300'>All engine parameters nominal. Optimal combustion efficiency.</span>";
+                        if (!apiOwnsHealthLine) txtEnginePrediction.innerHTML = "<span class='text-emerald-300'>All engine parameters nominal. Optimal combustion efficiency.</span>";
                         if (boxAiAlert) boxAiAlert.classList.add('hidden');
 
                         if (window.lastAlertMsg !== 'nominal') {
@@ -4362,7 +4471,7 @@ function refreshAnalyticsSidebar() {
                             }
                         }
                     } else {
-                        txtEnginePrediction.innerHTML = "<span class='text-amber-300'>Degradation signatures detected. Predictive maintenance recommended.</span>";
+                        if (!apiOwnsHealthLine) txtEnginePrediction.innerHTML = "<span class='text-amber-300'>Degradation signatures detected. Predictive maintenance recommended.</span>";
                         if (boxAiAlert && alertMsg) {
                             boxAiAlert.classList.remove('hidden');
                             txtAiAlertMsg.textContent = alertMsg + ` Recommend reducing throttle to ${State.engineAnomalyThrottleCap}% to mitigate.`;
@@ -4424,7 +4533,19 @@ function refreshAnalyticsSidebar() {
                     };
                     
                     State.mlLogger.data.push(record);
-                    
+
+                    // Same 1Hz tick, telemetry in the API's own contract shape.
+                    // Units converted here, not hoped for: the console works in
+                    // bar, the contract in kPa, and a factor of 100 on oil
+                    // pressure would read as a catastrophic fault rather than a
+                    // bug. Channels this sim does not produce are simply absent
+                    // -- the detector masks what a retrofit kit does not report.
+                    collectMaintenanceFrame({
+                        coolantC: Number(cooling),
+                        oilBar: Number(lube),
+                        egtC: Number(egt),
+                    });
+
                     const badge = document.getElementById('badgeLoggerStatus');
                     const txtCount = document.getElementById('txtRecordCount');
                     if (badge) {

@@ -519,6 +519,76 @@ export function createApp(): express.Express {
   });
 
   /**
+   * Engine health. Forwards a window of telemetry to the Phase 1 anomaly
+   * detector and returns only what the strip needs.
+   *
+   * `baselineFrames` is the part that matters. Without it the detector scores
+   * this vessel against the served reference engine, and a boat that merely
+   * differs -- this console simulates a 24V loom where the reference assumes 12V
+   * -- reads as faulty from its first frame, at every throttle setting. That is
+   * not a detector working badly; it is a detector correctly answering a
+   * question nobody asked. Sending a healthy warm-up window makes "normal" mean
+   * this engine's normal.
+   *
+   * The console holds no opinion about engine health of its own here. It relays
+   * the API's score, or it shows nothing -- the same rule the throttle and route
+   * panels follow.
+   */
+  /** null unless the value is genuinely a finite number. Guards the `Number(null) === 0` trap. */
+  const numberOrNull = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  app.post("/api/maintenance", async (req, res) => {
+    const { frames = [], baselineFrames = null, observedHours = null, ratedRpm = null } =
+      req.body || {};
+
+    if (!Array.isArray(frames) || frames.length === 0) {
+      res.status(400).json({ error: "frames required" });
+      return;
+    }
+
+    try {
+      const upstream = await fetch(`${API_URL}/maintenance`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          vessel_id: "MV-CONSOLE-01",
+          frames,
+          baseline_frames:
+            Array.isArray(baselineFrames) && baselineFrames.length ? baselineFrames : null,
+          // `Number(null)` is 0, not NaN, so a bare Number.isFinite() check lets
+          // a missing value through as zero -- and `rated_rpm` is gt=0, so the
+          // whole request 422s. Test for absence first, then for finiteness.
+          observed_hours: numberOrNull(observedHours),
+          rated_rpm: numberOrNull(ratedRpm),
+        }),
+      });
+      if (!upstream.ok) throw new Error(`upstream ${upstream.status}`);
+      const data = (await upstream.json()) as Record<string, unknown>;
+      const streams = (data.streams as Record<string, unknown>[]) ?? [];
+      res.json({
+        anomalyScore: data.anomaly_score,
+        isAnomalous: data.is_anomalous,
+        phase: data.phase,
+        // Whether the score means "deviating from its own normal" or "not the
+        // reference engine" is the difference between a usable reading and a
+        // misleading one, so the strip is told which it got.
+        baselineFitted: Array.isArray(baselineFrames) && baselineFrames.length > 0,
+        streams: streams.slice(0, 3).map((s) => ({
+          label: s.label_en,
+          zScore: s.z_score,
+          contributionPct: s.contribution_pct,
+        })),
+      });
+    } catch (e) {
+      apiFailure(res, "/maintenance", e);
+    }
+  });
+
+  /**
    * Route. Was `/api/ai-waypoints` and `/api/ai-review-route`, which asked a
    * language model to invent waypoints while promising "deep navigable water" --
    * a promise it had no depth data to keep.
