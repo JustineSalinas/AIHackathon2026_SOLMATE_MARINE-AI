@@ -152,6 +152,12 @@ html, body {
    `:has(~ * [aria-modal="true"])` attempt here was never verified and matched
    nothing; it has been removed rather than left as decoration. */
 
+/* NOTE: the 2D chart's backdrop is set by `#leafletMap` (an ID selector, so it
+   wins) and is already deep navy. A `.leaflet-container` rule here would be dead
+   code -- checked in-browser. The 3D view needed the equivalent added, because
+   MapLibre's default background is sky blue; see the `sea-background` layer in
+   main.js. */
+
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--color-hairline); }
 ::-webkit-scrollbar-thumb { background: #f97316; border-radius: 3px; }

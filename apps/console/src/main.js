@@ -2276,36 +2276,64 @@ import "driver.js/dist/driver.css";
                 if (typeof LiveWaterMask !== 'undefined') LiveWaterMask.update(map);
             });
 
-            satelliteTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            // Tiles fail transiently on venue wifi far more often than they fail
+            // permanently, and Leaflet's default response to a failed tile is to leave
+            // the square empty forever -- which is what produced a chart of place names
+            // floating over a dark void. Retry each failed tile a few times with a
+            // backoff, then give up quietly. Capped, because a genuinely dead host must
+            // not turn into an unbounded request storm during a pitch.
+            const retryTiles = (layer, name) => {
+                layer.on('tileerror', (e) => {
+                    const img = e.tile;
+                    if (!img) return;
+                    const n = (img.__retry || 0) + 1;
+                    if (n > 3) {
+                        if (n === 4) log(`Map tiles unavailable (${name}) - continuing on cached imagery.`, "warn");
+                        return;
+                    }
+                    img.__retry = n;
+                    const src = img.src.split('#')[0];
+                    setTimeout(() => { img.src = `${src}#r${n}`; }, 400 * n);
+                });
+                return layer;
+            };
+
+            satelliteTileLayer = retryTiles(L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                crossOrigin: 'anonymous',
                 maxZoom: 21,
                 maxNativeZoom: 17,
                 attribution: '&copy; Esri'
-            });
+            }), 'satellite');
 
-            defaultMapTileLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            defaultMapTileLayer = retryTiles(L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                crossOrigin: 'anonymous',
                 maxZoom: 19,
                 attribution: '&copy; OpenStreetMap contributors'
-            });
+            }), 'roadmap');
 
-            labelsTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png', {
+            labelsTileLayer = retryTiles(L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png', {
+                crossOrigin: 'anonymous',
                 maxZoom: 19,
                 subdomains: 'abcd'
-            });
+            }), 'labels');
 
-            oceanBaseTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
+            oceanBaseTileLayer = retryTiles(L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
+                crossOrigin: 'anonymous',
                 maxZoom: 19,
                 attribution: '&copy; OpenStreetMap contributors, &copy; CARTO Dark Matter'
-            });
+            }), 'nautical base');
 
-            oceanRefTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}', {
+            oceanRefTileLayer = retryTiles(L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}', {
+                crossOrigin: 'anonymous',
                 maxZoom: 19,
                 attribution: '&copy; Esri Ocean Bathymetry Reference'
-            });
+            }), 'ocean reference');
 
-            openSeaMapTileLayer = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
+            openSeaMapTileLayer = retryTiles(L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
+                crossOrigin: 'anonymous',
                 maxZoom: 18,
                 attribution: '&copy; OpenSeaMap contributors'
-            });
+            }), 'seamarks');
 
             if (current2DMapType === 'satellite') {
                 satelliteTileLayer.addTo(map);
@@ -6731,6 +6759,12 @@ function refreshAnalyticsSidebar() {
                         }
                     },
                     layers: [
+                        // Painted under every raster. Without it MapLibre's default
+                        // background shows through as flat sky blue when tiles are slow,
+                        // which is how the helm view ended up looking like the boat was
+                        // sailing through the sky. Deep-water navy reads as sea, so a
+                        // slow tile degrades to "no detail yet" instead of "broken".
+                        { id: 'sea-background', type: 'background', paint: { 'background-color': '#0b1b2b' } },
                         {
                             id: 'satellite-layer',
                             type: 'raster',
